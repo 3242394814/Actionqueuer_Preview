@@ -57,12 +57,16 @@ local easy_stack = {minisign_item = "structure", minisign_drawn = "structure", s
 local deploy_spacing = {wall = 1, fence = 1, trap = 2, mine = 2, turf = 4, moonbutterfly = 4}
 local drop_spacing = {trap = 2}
 local action_thread_id = "actionqueue_action_thread"
+
+-- 估计是刨地用的点位
 local offsets = {}
-local unselectable_tags = {"DECOR", "FX", "INLIMBO", "NOCLICK", "player"}
-local selection_thread_id = "actionqueue_selection_thread"
 for i, offset in pairs({{0,0},{0,1},{1,1},{1,0},{1,-1},{0,-1},{-1,-1},{-1,0},{-1,1}}) do
     offsets[i] = Point(offset[1] * 1.5, 0, offset[2] * 1.5)
 end
+
+local unselectable_tags = {"DECOR", "FX", "INLIMBO", "NOCLICK", "player"}
+local selection_thread_id = "actionqueue_selection_thread"
+
 
 -- 201221 null: added support for snapping Tills to different farm tile grids
 local farm_grid = "3x3"
@@ -116,6 +120,7 @@ local function GetHeadingDir()
     end
 end
 
+-- 获取可用地皮焦点
 local function GetAccessibleTilePosition(pos)
     local ent_blockers = TheSim:FindEntities(pos.x, 0, pos.z, 4, {"blocker"})
     for _, offset in pairs(offsets) do
@@ -330,13 +335,30 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
             -- elseif snap_farm then -- 210116 null: (Tilling, Wormwood planting on soil tile)
             --     accessible_pos = GetSnapTillPosition(cur_pos) -- Snap pos to farm grid
 
-            elseif deploy_fn == self.TillAtPoint then -- 210117 null: check if pos already Tilled
+            elseif deploy_fn == self.TillAtPoint then -- 210117 null: 检查pos是否已耕作
                 for _,ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, {"soil"})) do
-                    if not ent:HasTag("NOCLICK") then accessible_pos = false break end -- Skip Tilling this position
+                    if not ent:HasTag("NOCLICK") then
+                        accessible_pos = false
+                        break
+                    end -- Skip Tilling this position
                 end
+            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and not  -- 鼠标拿着物品&不要是丢弃物品状态&不能丢弃在某点位
+                        TheWorld.Map:CanDeployAtPoint(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            ThePlayer.replica.inventory:GetActiveItem()
+                            )
+                    or
+                    ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
+                        TheWorld.Map:CanDeployRecipeAtPoint(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            ThePlayer.components.playercontroller.placer_recipe,
+                            ThePlayer.components.playercontroller.placer:GetRotation()
+                    )
+            then
+                    accessible_pos = false
             end
 
-            if gp_mod_Snap and not (deploy_fn == self.DropActiveItem) then -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
+            if accessible_pos and gp_mod_Snap and not (deploy_fn == self.DropActiveItem) then -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
                 if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
@@ -345,7 +367,7 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
             DebugPrint("当前位置:", accessible_pos or "跳过")
             if accessible_pos then
                 if deploy_fn(self, accessible_pos, item) then
-                    self:RemovePreview(accessible_pos) -- 我只是想加上这个
+                    self:RemovePreview(accessible_pos)
                 else
                     break
                 end
@@ -681,16 +703,30 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func,
             local accessible_pos = cur_pos
             if terraforming then
                 accessible_pos = GetAccessibleTilePosition(cur_pos)
-            elseif istill then -- 210117 null: check if pos already Tilled
+            elseif istill then -- 210117 null: 检查pos是否已耕作
                 for _, ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, { "soil" })) do
                     if not ent:HasTag("NOCLICK") then
                         accessible_pos = false
                         break
                     end -- Skip Tilling this position
                 end
+            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not compat_gp_mod and not  -- 鼠标拿着物品&不要是丢弃物品状态&不能丢弃在某点位
+                        TheWorld.Map:CanDeployAtPoint(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            ThePlayer.replica.inventory:GetActiveItem()
+                            )
+                    or
+                    ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
+                        TheWorld.Map:CanDeployRecipeAtPoint(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            ThePlayer.components.playercontroller.placer_recipe,
+                            ThePlayer.components.playercontroller.placer:GetRotation()
+                    )
+            then
+                    accessible_pos = false
             end
 
-            if gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
+            if accessible_pos and gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
                 if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
