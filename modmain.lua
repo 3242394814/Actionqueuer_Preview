@@ -45,6 +45,11 @@ function setval(fn, path, new)
 	debug.setupvalue(prev, i, new)
 end
 
+AQ_preview_max = GetModConfigData("number") or 80
+AQ_preview_color = PLAYERCOLOURS[GetModConfigData("color")] or PLAYERCOLOURS["GREEN"] -- 颜色
+AQ_preview_dont = GetModConfigData("dont_color") or false -- 不要变色
+AQ_highlight = GetModConfigData("highlight") or 0.3
+
 -- 基本定义（来自行为学模组）
 local GeoUtil = require("utils/geoutil")
 local headings = {[0] = true, [45] = false, [90] = false, [135] = true, [180] = true, [225] = false, [270] = false, [315] = true, [360] = true}
@@ -81,7 +86,7 @@ local offsets_4x4 = { -- these are basically margin/offset multipliers, selectio
     [315] = {x = 3, z = 1}, 
     [360] = {x = 3, z = 3}}
 
-local DebugPrint = TUNING.ACTION_QUEUE_DEBUG_MODE and function(...)
+local DebugPrint = GetModConfigData("debug_mode") and function(...)
     print("[行为学预览] ",...)
 end or function() --[[disabled]] end
 
@@ -414,9 +419,10 @@ end
 ActionQueuer.preview_curs = {} -- 当前:存实体
 ActionQueuer.preview_eds = {} -- 已种：存true
 ActionQueuer.userid = ActionQueuer.inst.userid -- 自己的id
-ActionQueuer.preview_highlight = 0.3
-ActionQueuer.preview_max = 40 -- 最大预览数
-ActionQueuer.preview_dont = false -- 不要变色？
+ActionQueuer.preview_highlight = AQ_highlight
+ActionQueuer.preview_max = AQ_preview_max
+ActionQueuer.preview_color = AQ_preview_color -- 颜色
+ActionQueuer.preview_dont = AQ_preview_dont -- 不要变色
 
 
 -- 工具
@@ -503,7 +509,9 @@ end
 local function GetAPrefabCount(prefab)
     local count = 0
     for _, ent in ipairs(GetItemsFromAll(prefab, nil, nil, { "container", "backpack", "body", "mouse" }) or {}) do
-        count = (ent and ent.replica and ent.replica.stackable and ent.replica.stackable:StackSize() or 1) + count
+        count = (ent and ent.replica and
+            (ent.replica.inst and (ent.replica.inst.prefab == "fertilizer" or ent.replica.inst.prefab == "soil_amender_fermented") and ent.replica.inst.components.finiteuses:GetUses() or -- 特殊物品按剩余使用次数算
+            ent.replica.stackable and ent.replica.stackable:StackSize()) or 1) + count -- 否则按堆叠数算
     end
 
     return count
@@ -726,9 +734,9 @@ function ActionQueuer:SpawnPreview(pos, meta)
             -- 处理变色逻辑
             local anim = ent.AnimState
             if anim then
-                anim:SetLightOverride(type(self.preview_highlight) == "number" and self.preview_highlight or 0.3)
+                anim:SetLightOverride(self.preview_highlight)
                 if not self.preview_dont then
-                    local r, g, b, t = 0, 128 / 255, 0, 1 -- 颜色
+                    local r, g, b, t = unpack(self.preview_color)
                     anim:OverrideMultColour(r, g, b, t)
                     anim:SetAddColour(r, g, b, t)
                 end
@@ -767,10 +775,10 @@ function ActionQueuer:SetPreview(rightclick)
                 end
             end
 
-            if active_item:HasTag("fertilizer") then
-                local pos = TheInput:GetWorldPosition()
-                if pos and TheWorld.Map:IsFarmableSoilAtPoint(pos.x, 0, pos.z) then
-                    return ActionQueuer:ClearPreview()
+            if active_item:HasTag("fertilizer") then -- 手里拿的是肥料
+                local pos = TheInput:GetWorldPosition() -- 获得当前坐标
+                if pos and TheWorld.Map:IsFarmableSoilAtPoint(pos.x, 0, pos.z) then -- 如果是未开垦的土地
+                    return ActionQueuer:ClearPreview() -- 清除预览
                 else
                     -- 最好是贴图
                     self:DeployToPreview({
@@ -828,7 +836,7 @@ function ActionQueuer:SetPreview(rightclick)
                 ent = equip_item,
                 scale = 2
             }, 4, false, "tile", false)
-        elseif equip_item and (equip_item.prefab == "wateringcan" or equip_item.prefab == "premiumwateringcan") then
+        elseif equip_item and (equip_item.prefab == "wateringcan" or equip_item.prefab == "premiumwateringcan") then -- 装备着浇水壶/鸟嘴壶
             -- 210202 null: first check if selection box is being used
             if not self.TL or (math.abs(self.TL.x - self.BR.x) + math.abs(self.TR.z - self.BL.z) < 1) then -- if single click
             else
