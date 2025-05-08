@@ -140,6 +140,8 @@ local function IsValidEntity(ent)
     return ent and ent.Transform and ent:IsValid() and not ent:HasTag("INLIMBO")
 end
 
+local last_Width_Height_String = ""
+
 -- 兼容几何布局
 local gp_mod = KnownModIndex:IsModEnabledAny("workshop-351325790")
 local gp_mod_Snap = nil
@@ -546,7 +548,12 @@ function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
     local height = self.endless_deploy and 100 or
         math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
     DebugPrint("Width:", width + 1, "Height:", height + 1) -- since counting from 0
-    ThePlayer.components.talker:Say((width + 1).."×"..(height + 1)) -- 玩家读出预计放置数
+
+    local talker_string = (width + 1).."×"..(height + 1)
+    if last_Width_Height_String ~= talker_string then -- 如果长宽有变化
+        ThePlayer.components.talker:Say(talker_string) -- 玩家读出预计放置长宽
+        last_Width_Height_String = talker_string
+    end
     local start_x, _, start_z = self.TL:Get()
     local terraforming = false
 
