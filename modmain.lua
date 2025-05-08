@@ -46,16 +46,15 @@ function setval(fn, path, new)
 end
 
 -- 基本定义（来自行为学模组）
+local GeoUtil = require("utils/geoutil")
 local headings = {[0] = true, [45] = false, [90] = false, [135] = true, [180] = true, [225] = false, [270] = false, [315] = true, [360] = true}
 local easy_stack = {minisign_item = "structure", minisign_drawn = "structure", spidereggsack = "spiderden"}
 local deploy_spacing = {wall = 1, fence = 1, trap = 2, mine = 2, turf = 4, moonbutterfly = 4}
 local drop_spacing = {trap = 2}
 local action_thread_id = "actionqueue_action_thread"
-local allowed_actions = {}
-for _, category in pairs({"allclick", "leftclick", "rightclick", "single", "noworkdelay", "tools", "autocollect", "collect"}) do
-    allowed_actions[category] = {}
-end
 local offsets = {}
+local unselectable_tags = {"DECOR", "FX", "INLIMBO", "NOCLICK", "player"}
+local selection_thread_id = "actionqueue_selection_thread"
 for i, offset in pairs({{0,0},{0,1},{1,1},{1,0},{1,-1},{0,-1},{-1,-1},{-1,0},{-1,1}}) do
     offsets[i] = Point(offset[1] * 1.5, 0, offset[2] * 1.5)
 end
@@ -82,200 +81,9 @@ local offsets_4x4 = { -- these are basically margin/offset multipliers, selectio
     [315] = {x = 3, z = 1}, 
     [360] = {x = 3, z = 3}}
 
--- -- 210116 null: debug Farm spacing function
--- function SetFarmSpacing(num)
---     farm_spacing = num
---     print("farm_spacing: ", farm_spacing)
--- end
--- nspace = SetFarmSpacing
-
--- 210705 null: added support for other mods to add their own CherryPick conditions
-local mod_cherrypick_fns = {} -- This will be a list of funtions from other mods
-
 local DebugPrint = TUNING.ACTION_QUEUE_DEBUG_MODE and function(...)
     print("[行为学预览] ",...)
 end or function() --[[disabled]] end
-
-local function AddAction(category, action, testfn)
-    if type(category) ~= "string" or not allowed_actions[category] then
-        DebugPrint("Category doesn't exist:", category)
-        return
-    end
-    local action_ = type(action) == "string" and ACTIONS[action] or action
-    if type(action_) ~= "table" or not action_.id then
-        DebugPrint("Action doesn't exist:", action)
-        return
-    end
-    if testfn ~= nil and testfn ~= true and type(testfn) ~= "function" then
-        DebugPrint("testfn should be true, a function that returns a boolean, or nil:", testfn, "type:", type(testfn))
-        return
-    end
-    local modifier = allowed_actions[category][action_] and (testfn and "modified" or "removed") or (testfn and "added")
-    if not modifier then return end
-    allowed_actions[category][action_] = testfn
-    DebugPrint("Successfully", modifier, action_.id, "action in", category, "category.")
-end
-
-local function AddActionList(category, ...)
-    for _, action in pairs({...}) do
-        AddAction(category, action, true)
-    end
-end
-
-local function RemoveActionList(category, ...)
-    for _, action in pairs({...}) do
-        AddAction(category, action)
-    end
-end
-
---[[global console functions]]
-AddActionQueuerAction = AddAction
-RemoveActionQueuerAction = AddAction
-AddActionQueuerActionList = AddActionList
-RemoveActionQueuerActionList = RemoveActionList
-
---[[allclick]]
-AddActionList("allclick", "CHOP", "MINE", "NET", "EAT")
--- 201222 null: Moved "EAT" from "rightclick" to "allclick" list
-
-AddAction("allclick", "ATTACK", function(target)
-    return target:HasTag("wall")
-end)
-
---[[leftclick]]
-AddActionList("leftclick", "ADDFUEL", "ADDWETFUEL", "CHECKTRAP", "COMBINESTACK", "COOK", "DECORATEVASE", "DIG", "DRAW", "DRY",
-"EAT", "FERTILIZE", "FILL", "GIVE", "HAUNT", "LOWER_SAIL_BOOST", "PLANT", "RAISE_SAIL", "REPAIR_LEAK", "SEW", "TAKEITEM", "UPGRADE", 
-"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE")
-
-AddAction("leftclick", "ACTIVATE", function(target)
-    return target.prefab == "dirtpile" or (target.prefab == "winona_catapult")
-end)
-AddAction("leftclick", "HARVEST", function(target)
-    return target.prefab ~= "birdcage"
-end)
-AddAction("leftclick", "HEAL", function(target)
-    --ThePlayer can only heal themselves, not other players
-    return target == ThePlayer or not target:HasTag("player")
-end)
-AddAction("leftclick", "PICKUP", function(target)
-    return target.prefab ~= "trap" and target.prefab ~= "birdtrap"
-       and not target:HasTag("mineactive") and not target:HasTag("minesprung")
-end)
-AddAction("leftclick", "SHAVE", function(target)
-    return target:HasTag("brushable")
-end)
-
--- 201223 null: left click for PLANTREGISTRY_RESEARCH while equipping plantregistryhat
-AddAction("leftclick", "PLANTREGISTRY_RESEARCH", function(target)
-    local equip_item = ThePlayer.components.playeravatardata.inst.replica.inventory:GetEquippedItem(EQUIPSLOTS.HEAD)
-    return equip_item and (equip_item.prefab == "plantregistryhat" or equip_item.prefab == "nutrientsgoggleshat") and
-           target.prefab ~= "farm_plant_randomseed" -- 201223 null: disable research on random seeds to prevent infinite queue issue
-end)
-
--- 210203 null: added support for leftclick FEED, when Walter feeds small Woby
-AddAction("leftclick", "FEED", function(target)
-    return target.prefab == "wobysmall"
-end)
-
--- 210226 null: added support for left click Wickerbottom book on self for READ (for Wickerbottom / Maxwell)
-AddAction("leftclick", "READ", function(target)
-    local active_item = ThePlayer.components.playeravatardata.inst.replica.inventory:GetActiveItem()
-    return active_item and active_item.AnimState and active_item.AnimState:GetBuild() == "books" and
-           target == ThePlayer -- 210226 null: only queue READ if ThePlayer is using a book on themselves
-end)
-
---[[rightclick]]
-AddActionList("rightclick", "CASTSPELL", "COOK", "DIG", "DISMANTLE", "FEEDPLAYER", "HAMMER", "REPAIR", "RESETMINE", "TURNON",
-"TURNOFF", "UNWRAP", "TAKEITEM", "POUR_WATER", "DEPLOY_TILEARRIVE", "OCEAN_TRAWLER_LOWER", "OCEAN_TRAWLER_RAISE",
-"SCYTHE", "START_PUSHING")
-
--- 201218 null: added support for right click PICK while equipping plantregistryhat
-AddAction("rightclick", "PICK", function(target)
-    local equip_item = ThePlayer.components.playeravatardata.inst.replica.inventory:GetEquippedItem(EQUIPSLOTS.HEAD)
-    return equip_item and (equip_item.prefab == "plantregistryhat" or equip_item.prefab == "nutrientsgoggleshat")
-end)
--- 210103 null: added support for right click PICK while Wormwood (plantkin)
-AddAction("rightclick", "PICK", function(target)
-    return ThePlayer:HasTag("plantkin")
-end)
-AddAction("rightclick", "PICK", function(target)
-    return target.prefab == "otterden"
-end)
-
--- 201218 null: added support for right click INTERACT_WITH while equipping plantregistryhat
-AddAction("rightclick", "INTERACT_WITH", function(target)
-    local equip_item = ThePlayer.components.playeravatardata.inst.replica.inventory:GetEquippedItem(EQUIPSLOTS.HEAD)
-    return equip_item and (equip_item.prefab == "plantregistryhat" or equip_item.prefab == "nutrientsgoggleshat")
-end)
-
--- 210103 null: added support for right click INTERACT_WITH while Wormwood (plantkin)
-AddAction("rightclick", "INTERACT_WITH", function(target)
-    return ThePlayer:HasTag("plantkin")
-end)
-
--- 210203 null: added support for rightclick FEED, when Walter feeds big Woby
-AddAction("rightclick", "FEED", function(target)
-    return target.prefab == "wobybig"
-end)
-
---[[single]]
-AddActionList("single", "CASTSPELL", "DECORATEVASE", "REPAIR_LEAK")
-
---[[noworkdelay]]
-AddActionList("noworkdelay", "ADDFUEL", "ADDWETFUEL", "CHOP", "COOK", "DIG", "DRY", "EAT", "FERTILIZE", "FILL", "HAMMER",
-"HARVEST", "HEAL", "MINE", "PLANT", "REPAIR", "TERRAFORM", "ADDCOMPOSTABLE", "DEPLOY_TILEARRIVE", "PICKUP")
-
-AddAction("noworkdelay", "GIVE", function(target)
-    return target:HasTag("trader")
-end)
-AddAction("noworkdelay", "NET", function(target)
-    return not ThePlayer.components.locomotor or not target:HasTag("butterfly")
-end)
-
---[[tools]]
-AddActionList("tools", "ATTACK", "CHOP", "DIG", "HAMMER", "MINE", "NET", "SCYTHE")
-
---[[autocollect]]
-AddActionList("autocollect", "CHOP", "DIG", "HAMMER", "HARVEST", "MINE", "PICK", "PICKUP", "RESETMINE", "SCYTHE")
-AddAction("autocollect", "GIVE", function(target)
-    return target.prefab ~= "mushroom_farm" and target.prefab ~= "moonbase" and not target:HasTag("gemsocket")
-end)
-
---[[collect]]
-AddAction("collect", "PICKUP", function(target)
-    return not ( target:HasTag("INLIMBO") or target:HasTag("NOCLICK") or target:HasTag("irreplaceable") or target:HasTag("knockbackdelayinteraction") or
-	      target:HasTag("event_trigger") or target:HasTag("catchable") or target:HasTag("fire") or target:HasTag("light") or target:HasTag("spider") or
-	      target:HasTag("cursed") or target:HasTag("paired") or target:HasTag("bundle") or target:HasTag("heatrock") or target:HasTag("deploykititem") or
-	      target:HasTag("boatbuilder") or target:HasTag("singingshell") or target:HasTag("archive_lockbox") or target:HasTag("simplebook") or
-	      target:HasTag("donotautopick") ) and target:HasTag("_inventoryitem") and target.prefab ~= "amulet"
-end)
-
-
-
-local function IsValidEntity(ent)
-    return ent and ent.Transform and ent:IsValid() and not ent:HasTag("INLIMBO")
-end
-
-local function IsHUDEntity()
-    local ent = TheInput:GetWorldEntityUnderMouse()
-    return ent and ent:HasTag("INLIMBO") or TheInput:GetHUDEntityUnderMouse()
-end
-
-local function CheckAllowedActions(category, action, target)
-    local allowed_action = allowed_actions[category][action]
-    return allowed_action and (allowed_action == true or allowed_action(target))
-end
-
-local function GetWorldPosition(screen_x, screen_y)
-    return Point(TheSim:ProjectScreenPos(screen_x, screen_y))
-end
-
--- -- 210127 null: can use TheInput:GetWorldPosition() instead
--- -- 201223 null: function to get the in-game world position under the mouse
--- local function GetWorldPositionUnderMouse()
---     local screen_x, screen_y = TheSim:GetPosition() -- Get player's cursor coordinates (pixels) on display screen
---     return Point(TheSim:ProjectScreenPos(screen_x, screen_y)) -- Convert the screen coordinates into in-game world position
--- end
 
 local function GetDeploySpacing(item)
     for key, spacing in pairs(deploy_spacing) do
@@ -290,11 +98,6 @@ local function GetDropSpacing(item)
         if item.prefab:find(key) or item:HasTag(key) then return spacing end
     end
     return 1
-end
-
-local function CompareDeploySpacing(item, spacing)
-    return item and item.replica.inventoryitem and item.replica.inventoryitem.classified
-       and item.replica.inventoryitem.classified.deployspacing:value() == spacing
 end
 
 local function GetHeadingDir()
@@ -324,8 +127,285 @@ local function GetAccessibleTilePosition(pos)
     return nil
 end
 
+local function GetWorldPosition(screen_x, screen_y)
+    return Point(TheSim:ProjectScreenPos(screen_x, screen_y))
+end
+
+local function IsValidEntity(ent)
+    return ent and ent.Transform and ent:IsValid() and not ent:HasTag("INLIMBO")
+end
+
+
+local Placer = require("components/placer")
+-- 兼容几何布局
+local gp_mod = ModManager:GetMod("workshop-351325790")
+local gp_mod_Snap = nil
+local gp_mod_CTRL_setting
+
+if gp_mod then
+    AddClassPostConstruct("components/builder_replica", function(inst)
+        gp_mod_Snap = getval(inst.MakeRecipeAtPoint,"Snap")
+    end)
+    gp_mod_CTRL_setting = function()
+        return GLOBAL.GetModConfigData("CTRL","workshop-351325790")
+    end
+else
+    print("[行为学预览] 未检测到几何布局模组开启")
+end
 
 AddComponentPostInit("actionqueuer",function(ActionQueuer)
+
+-- 这个函数不好HOOK，所以暴力覆盖
+ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
+    local DebugPrint = TUNING.ACTION_QUEUE_DEBUG_MODE and function(...)
+        print("[行为学] ",...)
+    end or function() --[[disabled]] end
+
+
+    if not self.TL then return end
+
+    -- 210116 null: cases for snapping positions to farm grid (Tilling, Wormwood planting on soil tiles, etc)
+    local snap_farm = false
+    if deploy_fn == self.TillAtPoint or deploy_fn == self.WormwoodPlantAtPoint then snap_farm = true end
+    if snap_farm then
+        if farm_grid == "4x4" then spacing = 1.26 -- 210116 null: different spacing for 4x4 grid
+        elseif farm_grid == "2x2" then spacing = 2 -- 210609 null: different spacing for 2x2 grid
+        end
+    end 
+
+    local heading, dir = GetHeadingDir()
+    local diagonal = heading % 2 ~= 0
+    DebugPrint("Heading:", heading, "Diagonal:", diagonal, "Spacing:", spacing)
+    DebugPrint("TL:", self.TL, "TR:", self.TR, "BL:", self.BL, "BR:", self.BR)
+    local X, Z = "x", "z"
+    if dir then X, Z = Z, X end
+    local spacing_x = self.TL[X] > self.TR[X] and -spacing or spacing
+    local spacing_z = self.TL[Z] > self.BL[Z] and -spacing or spacing
+    local adjusted_spacing_x = diagonal and spacing * 1.4 or spacing
+    local adjusted_spacing_z = diagonal and spacing * 0.7 or spacing
+    local width = math.floor(self.TL:Dist(self.TR) / adjusted_spacing_x)
+    local height = self.endless_deploy and 100 or math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
+    DebugPrint("Width:", width + 1, "Height:", height + 1) --since counting from 0
+    local start_x, _, start_z = self.TL:Get()
+    local terraforming = false
+
+    if deploy_fn == self.WaterAtPoint or -- 201217 null: added support for Watering of farming tiles
+       deploy_fn == self.FertilizeAtPoint or -- 201223 null: added support for Fertilizing of farming tiles
+       deploy_fn == self.TerraformAtPoint or 
+       item and item:HasTag("groundtile") then
+        start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
+        terraforming = true
+
+    elseif deploy_fn == self.DropActiveItem or item and (item:HasTag("wallbuilder") or item:HasTag("fencebuilder")) then
+        start_x, start_z = math.floor(start_x) + 0.5, math.floor(start_z) + 0.5
+
+    -- 210116 null: adjust farm grid start position + offsets (thanks to blizstorm for help)
+    elseif snap_farm then
+
+        -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
+        local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
+        local tilepos = _G.Point(tilecenter.x - 2, 0, tilecenter.z - 2) -- corner of tile
+        if tilecenter.x % 4 == 0 then -- if center of tile is divisible by 4, then it's a medium/huge server
+            farm3x3_offset = farm_spacing -- adjust offset for medium/huge servers for 3x3 grid
+        end
+
+        if farm_grid == "4x4" then -- 4x4 grid
+            -- 4x4 grid: spacing = 1.26, offset/margins = 0.11
+            start_x, start_z = tilepos.x + math.floor((start_x - tilepos.x)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].x, 
+                               tilepos.z + math.floor((start_z - tilepos.z)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].z 
+
+        elseif farm_grid == "2x2" then -- 210609 null: 2x2 grid: spacing = 2 (4/2), offset = 1 (4/2/2)
+            start_x, start_z = math.floor(start_x / 2) * 2 + 1, 
+                               math.floor(start_z / 2) * 2 + 1
+
+        else -- 3x3 grid: spacing = 1.333 (4/3), offset = 0.665 (4/3/2)
+            -- start_x, start_z = math.floor(start_x * 0.75 + 0.5) * 1.333 + 0.665, 
+            --                    math.floor(start_z * 0.75 + 0.5) * 1.333 + 0.665
+
+            -- 210201 null: /0.75 (3/4) instead of *1.333 (4/3) to better support edge of large -1600 to 1600 maps (blizstorm)
+            -- start_x, start_z = math.floor(start_x * 0.75 + 0.5) / 0.75 + 0.665, 
+            --                    math.floor(start_z * 0.75 + 0.5) / 0.75 + 0.665
+            start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset, 
+                               math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
+                               -- 210202 null: remove +0.5 floored rounding for more consistent wormwood placements (blizstorm)
+                               -- 210202 null: use more precise 3x3 grid offset for better alignment at edge of maps
+        end
+
+    elseif self.deploy_on_grid then -- 210201 null: deploy_on_grid = last to avoid conflict with farm grids (blizstorm)
+        start_x, start_z = math.floor(start_x * 2 + 0.5) * 0.5, math.floor(start_z * 2 + 0.5) * 0.5
+
+    end
+
+    local cur_pos = Point()
+    local count = {x = 0, y = 0, z = 0}
+    local row_swap = 1
+    
+    -- 210127 null: added support for snaking within snaking for faster deployment (thanks to blizstorm)
+    local step = 1
+    local countz2 = 0
+    local countStep = {{0,1},{1,0},{0,-1},{1,0}}
+    if height < 1 then countStep = {{1,0},{1,0},{1,0},{1,0}} end -- 210130 null: bliz fix (210127)
+
+    self.action_thread = StartThread(function()
+        self.inst:ClearBufferedAction()
+        while self.inst:IsValid() do
+            cur_pos.x = start_x + spacing_x * count.x
+            cur_pos.z = start_z + spacing_z * count.z
+            if diagonal then
+                if width < 1 then
+                    if count[Z] > height then break end
+                    count[X] = count[X] - 1
+                    count[Z] = count[Z] + 1
+                else
+                    local row = math.floor(count.y / 2)
+                    if count[X] + row > width or count[X] + row < 0 then
+                        count.y = count.y + 1
+                        if count.y > height then break end
+                        row_swap = -row_swap
+                        count[X] = count[X] + row_swap - 1
+                        count[Z] = count[Z] + row_swap
+                        cur_pos.x = start_x + spacing_x * count.x
+                        cur_pos.z = start_z + spacing_z * count.z
+                    end
+                    count.x = count.x + row_swap
+                    count.z = count.z + row_swap
+                end
+            else
+                if double_snake then -- 210127 null: snake within snake deployment (thanks to blizstorm)
+                    if count[X] > width or count[X] < 0 then
+                        countz2 = countz2 + 2 -- assume first that next major row can be progressed since this is the case most of the time (blizstorm)
+
+                        -- if countz2 > height then -- old bliz code (210115)
+                        if countz2 + 1 > height then -- 210130 null: bliz fix (210127)
+
+                            -- if countz2 - 1 > height then -- old bliz code (210115)
+                            -- if countz2 - 1 <= height then -- old bliz code (210122)
+                            if countz2 <= height then -- 210130 null: bliz fix (210127)
+
+                                -- countz2 = countz2 - 1 -- old bliz code (210115)
+                                countStep={{1,0},{1,0},{1,0},{1,0}}
+
+                            else break end
+                        end
+
+                        step = 1
+                        row_swap = -row_swap
+                        count[X] = count[X] + row_swap
+                        count[Z] = countz2
+                        cur_pos.x = start_x + spacing_x * count.x
+                        cur_pos.z = start_z + spacing_z * count.z
+                    end
+                    count[X] = count[X] + countStep[step][1]*row_swap
+                    count[Z] = count[Z] + countStep[step][2]
+                    step = step % 4 + 1
+
+                else -- Regular snaking deployment
+                    if count[X] > width or count[X] < 0 then
+                        count[Z] = count[Z] + 1
+                        if count[Z] > height then break end
+                        row_swap = -row_swap
+                        count[X] = count[X] + row_swap
+                        cur_pos.x = start_x + spacing_x * count.x
+                        cur_pos.z = start_z + spacing_z * count.z
+                    end
+                    count[X] = count[X] + row_swap
+                end
+            end
+
+            local accessible_pos = cur_pos
+            if terraforming then
+                accessible_pos = GetAccessibleTilePosition(cur_pos)
+
+            -- 210116 null: not needed anymore
+            -- elseif snap_farm then -- 210116 null: (Tilling, Wormwood planting on soil tile)
+            --     accessible_pos = GetSnapTillPosition(cur_pos) -- Snap pos to farm grid
+
+            elseif deploy_fn == self.TillAtPoint then -- 210117 null: check if pos already Tilled
+                for _,ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, {"soil"})) do
+                    if not ent:HasTag("NOCLICK") then accessible_pos = false break end -- Skip Tilling this position
+                end
+            end
+
+            if gp_mod_Snap then
+                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
+                    accessible_pos = gp_mod_Snap(accessible_pos)
+                end
+            end
+
+            DebugPrint("当前位置:", accessible_pos or "跳过")
+            if accessible_pos then
+                if deploy_fn(self, accessible_pos, item) then
+                    self:RemovePreview(accessible_pos) -- 我只是想加上这个
+                else
+                    break
+                end
+            end
+        end
+        self:ClearActionThread()
+        self.inst:DoTaskInTime(0, function() if next(self.selected_ents) then self:ApplyToSelection() end end)
+    end, action_thread_id)
+end
+
+-- 覆盖法×2
+function ActionQueuer:SelectionBox(rightclick)
+    local previous_ents = {}
+    local started_selection = false
+    local start_x, start_y = self.screen_x, self.screen_y
+    self.update_selection = function()
+        if not started_selection then
+            if math.abs(start_x - self.screen_x) + math.abs(start_y - self.screen_y) < 32 then
+                return
+            end
+            started_selection = true
+        end
+        local xmin, xmax = start_x, self.screen_x
+        if xmax < xmin then
+            xmin, xmax = xmax, xmin
+        end
+        local ymin, ymax = start_y, self.screen_y
+        if ymax < ymin then
+            ymin, ymax = ymax, ymin
+        end
+        self.selection_widget:SetPosition((xmin + xmax) / 2, (ymin + ymax) / 2)
+        self.selection_widget:SetSize(xmax - xmin + 2, ymax - ymin + 2)
+        self.selection_widget:Show()
+        self.TL, self.BL, self.TR, self.BR = GetWorldPosition(xmin, ymax), GetWorldPosition(xmin, ymin), GetWorldPosition(xmax, ymax), GetWorldPosition(xmax, ymin)
+        --self.TL, self.BL, self.TR, self.BR = GetWorldPosition(xmin, ymin), GetWorldPosition(xmin, ymax), GetWorldPosition(xmax, ymin), GetWorldPosition(xmax, ymax)
+        self:SetPreview(rightclick) -- 我只是想加上这个
+        local center = GetWorldPosition((xmin + xmax) / 2, (ymin + ymax) / 2)
+        local range = math.sqrt(math.max(center:DistSq(self.TL), center:DistSq(self.BL), center:DistSq(self.TR), center:DistSq(self.BR)))
+        local IsBounded = GeoUtil.NewQuadrilateralTester(self.TL, self.TR, self.BR, self.BL)
+        local current_ents = {}
+        for _, ent in pairs(TheSim:FindEntities(center.x, 0, center.z, range, nil, unselectable_tags)) do
+            if IsValidEntity(ent) then
+                local pos = ent:GetPosition()
+                if IsBounded(pos) then
+                    if not self:IsSelectedEntity(ent) and not previous_ents[ent] then
+                        local act, rightclick_ = self:GetAction(ent, rightclick, pos)
+                        if act then self:SelectEntity(ent, rightclick_) end
+                    end
+                    current_ents[ent] = true
+                end
+            end
+        end
+        for ent in pairs(previous_ents) do
+            if not current_ents[ent] then
+                self:DeselectEntity(ent)
+            end
+        end
+        previous_ents = current_ents
+    end
+    self.selection_thread = StartThread(function()
+        while self.inst:IsValid() do
+            if self.queued_movement then
+                self.update_selection()
+                self.queued_movement = false
+            end
+            Sleep(FRAMES)
+        end
+        self:ClearSelectionThread()
+    end, selection_thread_id)
+end
 
 -- 魔改部分
 ActionQueuer.preview_curs = {} -- 当前:存实体
@@ -455,6 +535,7 @@ function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
     local height = self.endless_deploy and 100 or
         math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
     DebugPrint("Width:", width + 1, "Height:", height + 1) -- since counting from 0
+    ThePlayer.components.talker:Say((width + 1).."×"..(height + 1)) -- 玩家读出预计放置数
     local start_x, _, start_z = self.TL:Get()
     local terraforming = false
 
@@ -591,7 +672,12 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func)
                 end
             end
 
-            DebugPrint("当前位置:", accessible_pos or "跳过")
+            if gp_mod_Snap then
+                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
+                    accessible_pos = gp_mod_Snap(accessible_pos)
+                end
+            end
+
             if accessible_pos then
                 i = i + 1
                 local pos = Point(accessible_pos:Get())
@@ -795,20 +881,19 @@ end
 
 -- 修改原函数
 
-local old_SelectionBox = ActionQueuer.SelectionBox
-
-ActionQueuer.SelectionBox = function(rightclick, ...)
-    old_SelectionBox(rightclick, ...)
-    local old_SelectionBox_update_selection = ActionQueuer.update_selection
-    if not old_SelectionBox_update_selection then
-        print("[行为学预览] 警告：ActionQueuer.SelectionBox函数中的self.update_selection函数get失败")
-        return
-    end
-    ActionQueuer.update_selection = function()
-        ActionQueuer:SetPreview(rightclick)
-        old_SelectionBox_update_selection()
-    end
-end
+-- local old_SelectionBox = ActionQueuer.SelectionBox
+-- ActionQueuer.SelectionBox = function(rightclick, ...)
+--     old_SelectionBox(rightclick, ...)
+--     local old_SelectionBox_update_selection = ActionQueuer.update_selection
+--     if not old_SelectionBox_update_selection then
+--         print("[行为学预览] 警告：ActionQueuer.SelectionBox函数中的self.update_selection函数get失败")
+--         return
+--     end
+--     ActionQueuer.update_selection = function()
+--         ActionQueuer:SetPreview(rightclick)
+--         old_SelectionBox_update_selection()
+--     end
+-- end
 
 local old_ActionQueuer_ClearSelectedEntities = ActionQueuer.ClearSelectedEntities
 ActionQueuer.ClearSelectedEntities = function(...)
@@ -821,191 +906,5 @@ ActionQueuer.ClearActionThread = function(...)
     ActionQueuer:ClearPreview()
     old_ActionQueuer_ClearActionThread(...)
 end
-
-
--- 这部分不好HOOK啊...只好暴力覆盖
-local DebugPrint = TUNING.ACTION_QUEUE_DEBUG_MODE and function(...)
-    print("[行为学] ",...)
-end or function() --[[disabled]] end
-
-function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
-    if not self.TL then return end
-
-    -- 210116 null: cases for snapping positions to farm grid (Tilling, Wormwood planting on soil tiles, etc)
-    local snap_farm = false
-    if deploy_fn == self.TillAtPoint or deploy_fn == self.WormwoodPlantAtPoint then snap_farm = true end
-    if snap_farm then
-        if farm_grid == "4x4" then spacing = 1.26 -- 210116 null: different spacing for 4x4 grid
-        elseif farm_grid == "2x2" then spacing = 2 -- 210609 null: different spacing for 2x2 grid
-        end
-    end 
-
-    local heading, dir = GetHeadingDir()
-    local diagonal = heading % 2 ~= 0
-    DebugPrint("Heading:", heading, "Diagonal:", diagonal, "Spacing:", spacing)
-    DebugPrint("TL:", self.TL, "TR:", self.TR, "BL:", self.BL, "BR:", self.BR)
-    local X, Z = "x", "z"
-    if dir then X, Z = Z, X end
-    local spacing_x = self.TL[X] > self.TR[X] and -spacing or spacing
-    local spacing_z = self.TL[Z] > self.BL[Z] and -spacing or spacing
-    local adjusted_spacing_x = diagonal and spacing * 1.4 or spacing
-    local adjusted_spacing_z = diagonal and spacing * 0.7 or spacing
-    local width = math.floor(self.TL:Dist(self.TR) / adjusted_spacing_x)
-    local height = self.endless_deploy and 100 or math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
-    DebugPrint("Width:", width + 1, "Height:", height + 1) --since counting from 0
-    local start_x, _, start_z = self.TL:Get()
-    local terraforming = false
-
-    if deploy_fn == self.WaterAtPoint or -- 201217 null: added support for Watering of farming tiles
-       deploy_fn == self.FertilizeAtPoint or -- 201223 null: added support for Fertilizing of farming tiles
-       deploy_fn == self.TerraformAtPoint or 
-       item and item:HasTag("groundtile") then
-        start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
-        terraforming = true
-
-    elseif deploy_fn == self.DropActiveItem or item and (item:HasTag("wallbuilder") or item:HasTag("fencebuilder")) then
-        start_x, start_z = math.floor(start_x) + 0.5, math.floor(start_z) + 0.5
-
-    -- 210116 null: adjust farm grid start position + offsets (thanks to blizstorm for help)
-    elseif snap_farm then
-
-        -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
-        local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-        local tilepos = _G.Point(tilecenter.x - 2, 0, tilecenter.z - 2) -- corner of tile
-        if tilecenter.x % 4 == 0 then -- if center of tile is divisible by 4, then it's a medium/huge server
-            farm3x3_offset = farm_spacing -- adjust offset for medium/huge servers for 3x3 grid
-        end
-
-        if farm_grid == "4x4" then -- 4x4 grid
-            -- 4x4 grid: spacing = 1.26, offset/margins = 0.11
-            start_x, start_z = tilepos.x + math.floor((start_x - tilepos.x)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].x, 
-                               tilepos.z + math.floor((start_z - tilepos.z)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].z 
-
-        elseif farm_grid == "2x2" then -- 210609 null: 2x2 grid: spacing = 2 (4/2), offset = 1 (4/2/2)
-            start_x, start_z = math.floor(start_x / 2) * 2 + 1, 
-                               math.floor(start_z / 2) * 2 + 1
-
-        else -- 3x3 grid: spacing = 1.333 (4/3), offset = 0.665 (4/3/2)
-            -- start_x, start_z = math.floor(start_x * 0.75 + 0.5) * 1.333 + 0.665, 
-            --                    math.floor(start_z * 0.75 + 0.5) * 1.333 + 0.665
-
-            -- 210201 null: /0.75 (3/4) instead of *1.333 (4/3) to better support edge of large -1600 to 1600 maps (blizstorm)
-            -- start_x, start_z = math.floor(start_x * 0.75 + 0.5) / 0.75 + 0.665, 
-            --                    math.floor(start_z * 0.75 + 0.5) / 0.75 + 0.665
-            start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset, 
-                               math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
-                               -- 210202 null: remove +0.5 floored rounding for more consistent wormwood placements (blizstorm)
-                               -- 210202 null: use more precise 3x3 grid offset for better alignment at edge of maps
-        end
-
-    elseif self.deploy_on_grid then -- 210201 null: deploy_on_grid = last to avoid conflict with farm grids (blizstorm)
-        start_x, start_z = math.floor(start_x * 2 + 0.5) * 0.5, math.floor(start_z * 2 + 0.5) * 0.5
-
-    end
-
-    local cur_pos = Point()
-    local count = {x = 0, y = 0, z = 0}
-    local row_swap = 1
-    
-    -- 210127 null: added support for snaking within snaking for faster deployment (thanks to blizstorm)
-    local step = 1
-    local countz2 = 0
-    local countStep = {{0,1},{1,0},{0,-1},{1,0}}
-    if height < 1 then countStep = {{1,0},{1,0},{1,0},{1,0}} end -- 210130 null: bliz fix (210127)
-
-    self.action_thread = StartThread(function()
-        self.inst:ClearBufferedAction()
-        while self.inst:IsValid() do
-            cur_pos.x = start_x + spacing_x * count.x
-            cur_pos.z = start_z + spacing_z * count.z
-            if diagonal then
-                if width < 1 then
-                    if count[Z] > height then break end
-                    count[X] = count[X] - 1
-                    count[Z] = count[Z] + 1
-                else
-                    local row = math.floor(count.y / 2)
-                    if count[X] + row > width or count[X] + row < 0 then
-                        count.y = count.y + 1
-                        if count.y > height then break end
-                        row_swap = -row_swap
-                        count[X] = count[X] + row_swap - 1
-                        count[Z] = count[Z] + row_swap
-                        cur_pos.x = start_x + spacing_x * count.x
-                        cur_pos.z = start_z + spacing_z * count.z
-                    end
-                    count.x = count.x + row_swap
-                    count.z = count.z + row_swap
-                end
-            else
-                if double_snake then -- 210127 null: snake within snake deployment (thanks to blizstorm)
-                    if count[X] > width or count[X] < 0 then
-                        countz2 = countz2 + 2 -- assume first that next major row can be progressed since this is the case most of the time (blizstorm)
-
-                        -- if countz2 > height then -- old bliz code (210115)
-                        if countz2 + 1 > height then -- 210130 null: bliz fix (210127)
-
-                            -- if countz2 - 1 > height then -- old bliz code (210115)
-                            -- if countz2 - 1 <= height then -- old bliz code (210122)
-                            if countz2 <= height then -- 210130 null: bliz fix (210127)
-
-                                -- countz2 = countz2 - 1 -- old bliz code (210115)
-                                countStep={{1,0},{1,0},{1,0},{1,0}}
-
-                            else break end
-                        end
-
-                        step = 1
-                        row_swap = -row_swap
-                        count[X] = count[X] + row_swap
-                        count[Z] = countz2
-                        cur_pos.x = start_x + spacing_x * count.x
-                        cur_pos.z = start_z + spacing_z * count.z
-                    end
-                    count[X] = count[X] + countStep[step][1]*row_swap
-                    count[Z] = count[Z] + countStep[step][2]
-                    step = step % 4 + 1
-
-                else -- Regular snaking deployment
-                    if count[X] > width or count[X] < 0 then
-                        count[Z] = count[Z] + 1
-                        if count[Z] > height then break end
-                        row_swap = -row_swap
-                        count[X] = count[X] + row_swap
-                        cur_pos.x = start_x + spacing_x * count.x
-                        cur_pos.z = start_z + spacing_z * count.z
-                    end
-                    count[X] = count[X] + row_swap
-                end
-            end
-
-            local accessible_pos = cur_pos
-            if terraforming then
-                accessible_pos = GetAccessibleTilePosition(cur_pos)
-
-            -- 210116 null: not needed anymore
-            -- elseif snap_farm then -- 210116 null: (Tilling, Wormwood planting on soil tile)
-            --     accessible_pos = GetSnapTillPosition(cur_pos) -- Snap pos to farm grid
-
-            elseif deploy_fn == self.TillAtPoint then -- 210117 null: check if pos already Tilled
-                for _,ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, {"soil"})) do
-                    if not ent:HasTag("NOCLICK") then accessible_pos = false break end -- Skip Tilling this position
-                end
-            end
-
-            DebugPrint("当前位置:", accessible_pos or "跳过")
-            if accessible_pos then
-                if deploy_fn(self, accessible_pos, item) then
-                    self:RemovePreview(accessible_pos) -- 我只是想加上这个
-                else
-                    break
-                end
-            end
-        end
-        self:ClearActionThread()
-        self.inst:DoTaskInTime(0, function() if next(self.selected_ents) then self:ApplyToSelection() end end)
-    end, action_thread_id)
-end
-
 
 end)

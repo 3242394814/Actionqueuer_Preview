@@ -6,7 +6,7 @@ author = "冰冰羊"
 
 
 api_version = 10
-priority = -1
+priority = -11
 
 dst_compatible = true
 
