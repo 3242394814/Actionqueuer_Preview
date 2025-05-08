@@ -329,7 +329,7 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
                 end
             end
 
-            if gp_mod_Snap then
+            if gp_mod_Snap and not (deploy_fn == self.DropActiveItem) then -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
                 if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
@@ -590,7 +590,7 @@ function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
         row_swap, step, countz2, countStep
 end
 
-function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func)
+function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func, compat_gp_mod)
     local ret = {}
     local i = 0
     maxsize = type(maxsize) == "number" and maxsize or self.preview_max
@@ -675,7 +675,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func)
                 end
             end
 
-            if gp_mod_Snap then
+            if gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
                 if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
@@ -737,8 +737,8 @@ function ActionQueuer:SpawnPreview(pos, meta)
     end
 end
 
-function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize)
-    local ret = self:GetPosList(spacing, snap, tow, istill, maxsize, meta.func_pos)
+function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize, compat_gp_mod)
+    local ret = self:GetPosList(spacing, snap, tow, istill, maxsize, meta.func_pos, compat_gp_mod)
 
     for id, pos in pairs(ret or {}) do
         self:SpawnPreview(pos, meta)
@@ -818,7 +818,7 @@ function ActionQueuer:SetPreview(rightclick)
                 -- 最好是贴图
                 self:DeployToPreview({
                     ent = active_item
-                }, GetDropSpacing(active_item), false, "wall", false, GetAPrefabCount(active_item.prefab))
+                }, GetDropSpacing(active_item), false, "wall", false, GetAPrefabCount(active_item.prefab), true)
             end
             return
         end
