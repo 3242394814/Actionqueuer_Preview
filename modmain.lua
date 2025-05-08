@@ -135,12 +135,15 @@ local function IsValidEntity(ent)
     return ent and ent.Transform and ent:IsValid() and not ent:HasTag("INLIMBO")
 end
 
-
-local Placer = require("components/placer")
 -- 兼容几何布局
-local gp_mod = ModManager:GetMod("workshop-351325790")
+local gp_mod = KnownModIndex:IsModEnabledAny("workshop-351325790")
 local gp_mod_Snap = nil
 local gp_mod_CTRL_setting
+
+-- 兼容耕地对齐
+local st_mode = function()
+    return ThePlayer and ThePlayer.components and ThePlayer.components.snaptiller and ThePlayer.components.snaptiller.snapmode or 0
+end
 
 if gp_mod then
     AddClassPostConstruct("components/builder_replica", function(inst)
@@ -835,12 +838,15 @@ function ActionQueuer:SetPreview(rightclick)
                 }, 4, false, "tile", false)
             end
         elseif equip_item and equip_item:HasActionComponent("farmtiller") then
+            if not (st_mode() == 0) then
+            else
             return self:DeployToPreview({
                 prefab = "farm_soil",
                 func_pos = function(pos)
                     return TheWorld.Map:CanTillSoilAtPoint(pos:Get())
                 end
             }, farm_spacing, true, false, true)
+            end
         end
     elseif self.inst.components.playercontroller.placer then
         local playercontroller = self.inst.components.playercontroller
