@@ -1,10 +1,14 @@
 ---@diagnostic disable: lowercase-global
-name = "行为学预览"
+name = "列队行为学 · 动作预览"
 version = "0.1"
-description = ""
+description = [[
+为【ActionQueue RB3】添加动作预览（需同时开启原模组）
+动作预览代码来自呼吸的【群鸟绘卷 · 江海󰀃】
+
+支持种植植物预览、放置建筑预览、丢弃物品预览、挖地皮预览、耕地预览、浇水预览
+兼容原版几何布局&耕地对齐模组
+]]
 author = "冰冰羊"
-
-
 api_version = 10
 priority = -11
 
@@ -67,6 +71,7 @@ configuration_options =
     {
         name = "color",
         label = "预览颜色",
+        hover = "给预览的物品染个色",
         options = { -- 和行为学的设置一致
             {description = "白色", data = "WHITE"},
             {description = "红色", data = "FIREBRICK"},
