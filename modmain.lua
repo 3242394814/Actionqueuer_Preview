@@ -3,7 +3,7 @@ GLOBAL.setmetatable(env, {
         return GLOBAL.rawget(GLOBAL, k)
     end
 })
-function getval(fn, path)
+local function getval(fn, path)
 	if fn == nil or type(fn)~="function" then return end
 	local val = fn
 	local i
@@ -23,7 +23,7 @@ function getval(fn, path)
 	return val, i
 end
 
-function setval(fn, path, new)
+local function setval(fn, path, new)
 	if fn == nil or type(fn)~="function" then return end
 	local val = fn
 	local prev = nil
@@ -45,6 +45,11 @@ function setval(fn, path, new)
 	debug.setupvalue(prev, i, new)
 end
 
+local GetAQConfigData = function(name)
+    return KnownModIndex:IsModEnabledAny("workshop-3018652965") and GLOBAL.GetModConfigData(name, "workshop-3018652965") or
+            KnownModIndex:IsModEnabledAny("workshop-2873533916") and GLOBAL.GetModConfigData(name, "workshop-2873533916")
+end
+
 AQ_preview_max = GetModConfigData("number") or 80
 AQ_preview_color = PLAYERCOLOURS[GetModConfigData("color")] or PLAYERCOLOURS["GREEN"] -- 颜色
 AQ_preview_dont = GetModConfigData("dont_color") or false -- 不要变色
@@ -54,7 +59,7 @@ AQ_highlight = GetModConfigData("highlight") or 0.3
 local GeoUtil = require("utils/geoutil")
 local headings = {[0] = true, [45] = false, [90] = false, [135] = true, [180] = true, [225] = false, [270] = false, [315] = true, [360] = true}
 local easy_stack = {minisign_item = "structure", minisign_drawn = "structure", spidereggsack = "spiderden"}
-local deploy_spacing = {wall = 1, fence = 1, trap = 2, mine = 2, turf = 4, moonbutterfly = 4}
+local deploy_spacing = {wall = 1, fence = 1, trap = GetAQConfigData("tooth_trap_spacing") or 2, mine = 2, turf = 4, moonbutterfly = 4}
 local drop_spacing = {trap = 2}
 local action_thread_id = "actionqueue_action_thread"
 
@@ -69,14 +74,14 @@ local selection_thread_id = "actionqueue_selection_thread"
 
 
 -- 201221 null: added support for snapping Tills to different farm tile grids
-local farm_grid = "3x3"
+local farm_grid = GetAQConfigData("farm_grid") or "3x3"
 -- local farm_spacing = 1.333 -- 210116 null: 1.333 (4/3) = selection box spacing for Tilling, Wormwood planting, etc
 
 -- 210202 null: selection box spacing / offset for Tilling, Wormwood planting, etc
 local farm_spacing = 4/3 -- 210202 null: use 4/3 higher precision to prevent alignment issues at edge of maps
 local farm3x3_offset = farm_spacing / 2 -- 210202 null: 3x3 grid offset, use 4/3/2 to prevent alignment issues at edge of maps
 
-local double_snake = false -- 210127 null: support for snaking within snaking in DeployToSelection()
+local double_snake = GetAQConfigData("double_snake") or  false -- 210127 null: support for snaking within snaking in DeployToSelection()
 
 -- 210116 null: 4x4 grid offsets for each heading
 local offsets_4x4 = { -- these are basically margin/offset multipliers, selection box often starts from adjacent tile
@@ -329,14 +334,13 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
 
             local accessible_pos = cur_pos
             if terraforming then
-                accessible_pos = GetAccessibleTilePosition(cur_pos)
-
+                accessible_pos = TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) and GetAccessibleTilePosition(cur_pos) or false
             -- 210116 null: not needed anymore
             -- elseif snap_farm then -- 210116 null: (Tilling, Wormwood planting on soil tile)
             --     accessible_pos = GetSnapTillPosition(cur_pos) -- Snap pos to farm grid
 
             elseif deploy_fn == self.TillAtPoint then -- 210117 null: 检查pos是否已耕作
-                for _,ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, {"soil"})) do
+                for _,ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.05, {"soil"})) do
                     if not ent:HasTag("NOCLICK") then
                         accessible_pos = false
                         break
@@ -359,7 +363,7 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
             end
 
             if accessible_pos and gp_mod_Snap and not (deploy_fn == self.DropActiveItem) then -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
-                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
+                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then -- 启用网格对齐&不在耕地状态(耕地的点位对齐不符合要求)
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
             end
@@ -530,12 +534,33 @@ local function GetItemsFromAll(prefab, needtags, func, order)
     return result
 end
 
+-- 获取耐久度
+local function GetPercent(inst)
+    local i = 100
+    local classified = type(inst) == "table" and inst.replica and inst.replica.inventoryitem and
+        inst.replica.inventoryitem.classified
+    if classified then
+        if inst:HasOneOfTags({ "fresh", "show_spoilage" }) and classified.perish then
+            i = math.floor(classified.perish:value() / 0.62)
+        elseif classified.percentused then
+            i = classified.percentused:value()
+        end
+    end
+    return i
+end
+
 local function GetAPrefabCount(prefab)
     local count = 0
     for _, ent in ipairs(GetItemsFromAll(prefab, nil, nil, { "container", "backpack", "body", "mouse" }) or {}) do
-        count = (ent and ent.replica and
-            (ent.replica.inst and (ent.replica.inst.prefab == "fertilizer" or ent.replica.inst.prefab == "soil_amender_fermented") and ent.replica.inst.components.finiteuses:GetUses() or -- 特殊物品按剩余使用次数算
-            ent.replica.stackable and ent.replica.stackable:StackSize()) or 1) + count -- 否则按堆叠数算
+        count = (ent and ent.replica and (ent.replica.inst and
+                (
+                   ent.replica.inst.prefab == "fertilizer" and -- 便便桶
+                    math.ceil(GetPercent(ent.replica.inst) / 10) -- 可使用10次，所以除以10（所以不兼容修改了物品使用次数的MOD）
+                or ent.replica.inst.prefab == "soil_amender_fermented" and -- 超级催长剂
+                    math.ceil(GetPercent(ent.replica.inst) / 20) -- 可使用5次，所以除以20（所以不兼容修改了物品使用次数的MOD）
+                ))
+            or
+            ent.replica.stackable and ent.replica.stackable:StackSize() or 1) + count -- 否则按堆叠数算
     end
 
     return count
@@ -702,9 +727,9 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func,
         if not func or func(cur_pos) then
             local accessible_pos = cur_pos
             if terraforming then
-                accessible_pos = GetAccessibleTilePosition(cur_pos)
+                accessible_pos = TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) and GetAccessibleTilePosition(cur_pos) or false
             elseif istill then -- 210117 null: 检查pos是否已耕作
-                for _, ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, { "soil" })) do
+                for _, ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.05, { "soil" })) do
                     if not ent:HasTag("NOCLICK") then
                         accessible_pos = false
                         break
@@ -727,7 +752,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func,
             end
 
             if accessible_pos and gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
-                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then
+                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then -- 启用网格对齐&不在耕地状态(耕地的点位对齐不符合要求)
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
             end
@@ -819,15 +844,10 @@ function ActionQueuer:SetPreview(rightclick)
             end
 
             if active_item:HasTag("fertilizer") then -- 手里拿的是肥料
-                local pos = TheInput:GetWorldPosition() -- 获得当前坐标
-                if pos and TheWorld.Map:IsFarmableSoilAtPoint(pos.x, 0, pos.z) then -- 如果是未开垦的土地
-                    return ActionQueuer:ClearPreview() -- 清除预览
-                else
-                    -- 最好是贴图
-                    self:DeployToPreview({
-                        ent = active_item
-                    }, 4, false, "tile", false, GetAPrefabCount(active_item.prefab))
-                end
+                -- 最好是贴图
+                self:DeployToPreview({
+                    ent = active_item
+                }, 4, false, "tile", false, GetAPrefabCount(active_item.prefab))
                 return
             end
             if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then
