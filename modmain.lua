@@ -175,8 +175,15 @@ end
 
 AddComponentPostInit("actionqueuer",function(ActionQueuer)
 
+-- 220410 null: alternative method to attempt Attack Queuing without excessive delays
+function ActionQueuer:SendAttackLoop(act, pos, target) -- 给排队论加强Mod擦个屁股
+    SendRPCToServer(RPC.LeftClick, act.action.code, pos.x, pos.z, target, false, 10, act.action.canforce, act.action.mod_name)
+        -- Note that using this to attack causes subsequent client attack actions to always loop (even if not Attack Queuing)
+    self:Wait(act.action, target) -- wait after attack to prevent freeze/crash
+end
+
 -- 这个函数不好HOOK，所以暴力覆盖
-ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
+function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
     local DebugPrint = TUNING.ACTION_QUEUE_DEBUG_MODE and function(...)
         print("[行为学] ",...)
     end or function() --[[disabled]] end
