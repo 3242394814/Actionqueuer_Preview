@@ -346,8 +346,9 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
                         break
                     end -- Skip Tilling this position
                 end
-            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and not  -- 鼠标拿着物品&不要是丢弃物品状态&不能丢弃在某点位
-                        TheWorld.Map:CanDeployAtPoint(
+            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and not  -- 鼠标拿着物品&不要是丢弃物品状态
+                        ( ThePlayer:HasTag("plantkin") and ThePlayer.replica.inventory:GetActiveItem():HasTag("deployedfarmplant") ) and not -- 非沃姆伍德拿着种子
+                        TheWorld.Map:CanDeployAtPoint( -- 不能丢弃在某点位
                             accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                             ThePlayer.replica.inventory:GetActiveItem()
                             )
@@ -851,21 +852,6 @@ function ActionQueuer:SetPreview(rightclick)
                 return
             end
             if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then
-                if not self.TL then
-                    return
-                end
-                local cx, cz = (self.TL.x + self.BR.x) / 2,
-                    (self.TR.z + self.BL.z) / 2                                         -- Get SelectionBox() center coords
-                if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then   -- if center = soil tile
-                    -- 最好是贴图
-                    self:DeployToPreview({
-                        ent = active_item
-                    }, farm_spacing, true, false, false, GetAPrefabCount(active_item.prefab))
-                else -- 最好是贴图
-                    self:DeployToPreview({
-                        ent = active_item
-                    }, farm_spacing, true, false, false, GetAPrefabCount(active_item.prefab))
-                end
                 return
             end
 
