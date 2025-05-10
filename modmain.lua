@@ -334,7 +334,7 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
 
             local accessible_pos = cur_pos
             if terraforming then
-                accessible_pos = TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) and GetAccessibleTilePosition(cur_pos) or false
+                accessible_pos = GetAccessibleTilePosition(cur_pos)
             -- 210116 null: not needed anymore
             -- elseif snap_farm then -- 210116 null: (Tilling, Wormwood planting on soil tile)
             --     accessible_pos = GetSnapTillPosition(cur_pos) -- Snap pos to farm grid
@@ -653,7 +653,9 @@ function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
         row_swap, step, countz2, countStep
 end
 
-function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func, compat_gp_mod)
+function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta, compat_gp_mod)
+    local ent = meta.ent
+    local func = meta.func_pos
     local ret = {}
     local i = 0
     maxsize = type(maxsize) == "number" and maxsize or self.preview_max
@@ -727,8 +729,14 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, func,
 
         if not func or func(cur_pos) then
             local accessible_pos = cur_pos
-            if terraforming then
-                accessible_pos = TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) and GetAccessibleTilePosition(cur_pos) or false
+            if terraforming then -- terraforming 指的是当前行为位置是否为地皮中心点（比如挖地皮、给农田浇水、给农田施肥，都是往地皮中心点操作的）
+                if ent and (ent:HasTag("fertilizer") or ent.prefab == "wateringcan" or ent.prefab == "premiumwateringcan") then -- 如果在施肥、浇水
+                    if not TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) then -- 如果操作的位置不是农田区
+                        accessible_pos = false -- 取消预览
+                    end
+                else
+                    accessible_pos = GetAccessibleTilePosition(cur_pos) -- 否则将操作位置设置为中心点
+                end
             elseif istill then -- 210117 null: 检查pos是否已耕作
                 for _, ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.05, { "soil" })) do
                     if not ent:HasTag("NOCLICK") then
@@ -815,7 +823,7 @@ function ActionQueuer:SpawnPreview(pos, meta)
 end
 
 function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize, compat_gp_mod)
-    local ret = self:GetPosList(spacing, snap, tow, istill, maxsize, meta.func_pos, compat_gp_mod)
+    local ret = self:GetPosList(spacing, snap, tow, istill, maxsize, meta, compat_gp_mod)
 
     for id, pos in pairs(ret or {}) do
         self:SpawnPreview(pos, meta)
