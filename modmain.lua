@@ -346,12 +346,20 @@ ActionQueuer.DeployToSelection = function(self, deploy_fn, spacing, item)
                         break
                     end -- Skip Tilling this position
                 end
-            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and not  -- 鼠标拿着物品&不要是丢弃物品状态
-                        ( ThePlayer:HasTag("plantkin") and ThePlayer.replica.inventory:GetActiveItem():HasTag("deployedfarmplant") ) and not -- 非沃姆伍德拿着种子
-                        TheWorld.Map:CanDeployAtPoint( -- 不能丢弃在某点位
-                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                            ThePlayer.replica.inventory:GetActiveItem()
+            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and  -- 鼠标拿着物品&不要是丢弃物品状态
+                    not (
+                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
+                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说不能放在此点位
+                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
                             )
+                        )
+                        or
+                        (TheWorld.Map:CanDeployAtPoint( -- 不能放置在此点位
+                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                                    ThePlayer.replica.inventory:GetActiveItem()
+                                )
+                        )
+                    )
                     or
                     ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
@@ -744,11 +752,20 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
                         break
                     end -- Skip Tilling this position
                 end
-            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not compat_gp_mod and not  -- 鼠标拿着物品&不要是丢弃物品状态&不能丢弃在某点位
-                        TheWorld.Map:CanDeployAtPoint(
-                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                            ThePlayer.replica.inventory:GetActiveItem()
+            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not compat_gp_mod and  -- 鼠标拿着物品&不要是丢弃物品状态
+                    not (
+                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
+                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说不能放在此点位
+                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
                             )
+                        )
+                        or
+                        (TheWorld.Map:CanDeployAtPoint( -- 不能放置在此点位
+                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                                    ThePlayer.replica.inventory:GetActiveItem()
+                                )
+                        )
+                    )
                     or
                     ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
@@ -859,7 +876,29 @@ function ActionQueuer:SetPreview(rightclick)
                 }, 4, false, "tile", false, GetAPrefabCount(active_item.prefab))
                 return
             end
-            if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then
+            if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then -- 沃姆伍德种植
+                local placer = self.inst.components.playercontroller.deployplacer
+                if not self.TL then
+                    return
+                end
+                local cx, cz = (self.TL.x + self.BR.x) / 2,
+                    (self.TR.z + self.BL.z) / 2                                         -- Get SelectionBox() center coords
+                if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then   -- if center = soil tile
+                    -- 最好是贴图
+                    self:DeployToPreview({
+                        prefab = placer.prefab,
+                        skin = placer.skinname,
+                        skin_id = placer.skin_id,
+                        rotation = placer.Transform:GetRotation()
+                    }, farm_spacing, true, false, false, GetAPrefabCount(active_item.prefab))
+                else -- 最好是贴图
+                    self:DeployToPreview({
+                        prefab = placer.prefab,
+                        skin = placer.skinname,
+                        skin_id = placer.skin_id,
+                        rotation = placer.Transform:GetRotation()
+                    }, farm_spacing, false, false, false, GetAPrefabCount(active_item.prefab))
+                end
                 return
             end
 
