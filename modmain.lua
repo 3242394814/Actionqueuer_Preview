@@ -176,7 +176,7 @@ end
 AddComponentPostInit("actionqueuer",function(ActionQueuer)
 
 -- 220410 null: alternative method to attempt Attack Queuing without excessive delays
-function ActionQueuer:SendAttackLoop(act, pos, target) -- 给排队论加强Mod擦个屁股
+function ActionQueuer:SendAttackLoop(act, pos, target) -- 给排队论加强Mod擦个屁股。按住CTRL+Shift+鼠标左键选择目标，松开鼠标左键后开启行为学攻击，松开CTRL后停止攻击。适用于强制攻击栅栏
     SendRPCToServer(RPC.LeftClick, act.action.code, pos.x, pos.z, target, false, 10, act.action.canforce, act.action.mod_name)
         -- Note that using this to attack causes subsequent client attack actions to always loop (even if not Attack Queuing)
     self:Wait(act.action, target) -- wait after attack to prevent freeze/crash
@@ -379,7 +379,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
                             ThePlayer.components.playercontroller.placer:GetRotation()
                     )
             then
-                    accessible_pos = false
+                accessible_pos = false
             end
 
             if accessible_pos and gp_mod_Snap and not (deploy_fn == self.DropActiveItem) then -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
@@ -468,7 +468,7 @@ ActionQueuer.preview_curs = {} -- 当前:存实体
 ActionQueuer.preview_eds = {} -- 已种：存true
 ActionQueuer.userid = ActionQueuer.inst.userid -- 自己的id
 ActionQueuer.preview_highlight = AQ_highlight
-ActionQueuer.preview_max = AQ_preview_max
+ActionQueuer.preview_max = AQ_preview_max -- 预览最大数量
 ActionQueuer.preview_color = AQ_preview_color -- 颜色
 ActionQueuer.preview_dont = AQ_preview_dont -- 不要变色
 
@@ -794,7 +794,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
                             ThePlayer.components.playercontroller.placer:GetRotation()
                     )
             then
-                    accessible_pos = false
+                accessible_pos = false
             end
 
             if accessible_pos and gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
@@ -1015,23 +1015,6 @@ function ActionQueuer:RemovePreview(pos)
     end
     self.preview_curs[id] = nil
 end
-
-
--- 修改原函数
-
--- local old_SelectionBox = ActionQueuer.SelectionBox
--- ActionQueuer.SelectionBox = function(rightclick, ...)
---     old_SelectionBox(rightclick, ...)
---     local old_SelectionBox_update_selection = ActionQueuer.update_selection
---     if not old_SelectionBox_update_selection then
---         print("[行为学预览] 警告：ActionQueuer.SelectionBox函数中的self.update_selection函数get失败")
---         return
---     end
---     ActionQueuer.update_selection = function()
---         ActionQueuer:SetPreview(rightclick)
---         old_SelectionBox_update_selection()
---     end
--- end
 
 local old_ActionQueuer_ClearSelectedEntities = ActionQueuer.ClearSelectedEntities
 ActionQueuer.ClearSelectedEntities = function(...)

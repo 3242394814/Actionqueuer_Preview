@@ -3,7 +3,8 @@ name = "列队行为学 · 动作预览"
 version = "0.1"
 description = [[
 为【ActionQueue RB3】添加动作预览（需同时开启原模组）
-动作预览代码来自呼吸的【群鸟绘卷 · 江海󰀃】
+
+动作预览代码基于呼吸的【群鸟绘卷 · 江海󰀃】修改，感谢呼吸
 
 支持种植植物预览、放置建筑预览、丢弃物品预览、挖地皮预览、耕地预览、浇水预览
 
@@ -100,7 +101,7 @@ configuration_options =
     {
         name = "debug_mode",
         label = "调试模式",
-        hover = "",
+        hover = "开启后将在控制台打印各种调试信息",
         options = {
             {description = "是", data = true},
             {description = "否", data = false},
