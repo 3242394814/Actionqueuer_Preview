@@ -367,8 +367,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
                                 )
                         )
                     )
-                    or
-                    ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
+                    or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
                             accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                             ThePlayer.components.playercontroller.placer_recipe,
@@ -744,11 +743,15 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
 
         if not func or func(cur_pos) then
             local accessible_pos = cur_pos
-            if terraforming then -- terraforming 指的是当前行为位置是否为地皮中心点（比如挖地皮、给农田浇水、给农田施肥，都是往地皮中心点操作的）
+            if terraforming then -- terraforming 指的是当前行为位置是否为地皮中心点（比如挖地皮、放地皮、给农田浇水、给农田施肥，都是往地皮中心点操作的）
                 if ent and (ent:HasTag("fertilizer") or ent.prefab == "wateringcan" or ent.prefab == "premiumwateringcan") then -- 如果在施肥、浇水
                     if not TheWorld.Map:IsFarmableSoilAtPoint(cur_pos.x, 0, cur_pos.z) then -- 如果操作的位置不是农田区
                         accessible_pos = false -- 取消预览
                     end
+                elseif ent and (ent.prefab == "pitchfork" or ent.prefab == "goldenpitchfork") then -- 草叉/金草叉
+                    accessible_pos = not TheWorld.Map:CanPlaceTurfAtPoint(cur_pos.x, 0, cur_pos.z) and accessible_pos or false -- 当前位置不能放新地皮则false
+                elseif ent and ent:HasTag("groundtile") then -- 地皮
+                    accessible_pos = TheWorld.Map:CanPlaceTurfAtPoint(cur_pos.x, 0, cur_pos.z) and accessible_pos or false -- 当前位置可以放地皮则继续
                 else
                     accessible_pos = GetAccessibleTilePosition(cur_pos) -- 否则将操作位置设置为中心点
                 end
@@ -760,21 +763,20 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
                     end -- Skip Tilling this position
                 end
             elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not compat_gp_mod and  -- 鼠标拿着物品&不要是丢弃物品状态
-                    not (
+                    not ( -- 不满足可以放置在此点位的要求
                         (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说不能放在此点位
+                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
                             )
                         )
-                        or
-                        (TheWorld.Map:CanDeployAtPoint( -- 不能放置在此点位
+                        or -- 这里需要对植物进行额外判断....
+                        (TheWorld.Map:CanDeployAtPoint( -- 通用规则说能放置在此点位
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                                     ThePlayer.replica.inventory:GetActiveItem()
                                 )
                         )
                     )
-                    or
-                    ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
+                    or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
                             accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                             ThePlayer.components.playercontroller.placer_recipe,
@@ -810,6 +812,7 @@ function ActionQueuer:SpawnPreview(pos, meta)
         local ent
         local me = meta.ent
         if me then
+            print("DEBUGmeta", me.prefab, me.skinname, me.skin_id)
             meta.prefab, meta.skin, meta.skin_id = me.prefab, me.skinname, me.skin_id
         end
         if not ent then
@@ -909,6 +912,13 @@ function ActionQueuer:SetPreview(rightclick)
                 return
             end
 
+            if active_item:HasTag("groundtile") then -- 手里拿的是地皮
+                self:DeployToPreview({
+                    ent = active_item
+                }, 4, false, "tile", false, GetAPrefabCount(active_item.prefab))
+                return
+            end
+
             if active_item.replica.inventoryitem and active_item.replica.inventoryitem:IsDeployable(self.inst) then -- 如果鼠标上是允许放置的则放置
                 local placer = self.inst.components.playercontroller.deployplacer
                 if placer then
@@ -934,7 +944,7 @@ function ActionQueuer:SetPreview(rightclick)
             return
         end
         local equip_item = self:GetEquippedItemInHand()
-        if equip_item and equip_item:HasActionComponent("terraformer") then
+        if equip_item and equip_item:HasActionComponent("terraformer") then -- 可以影响地形的...比如草叉
             return self:DeployToPreview({
                 ent = equip_item,
                 scale = 2
