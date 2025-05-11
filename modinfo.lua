@@ -1,7 +1,31 @@
 ---@diagnostic disable: lowercase-global
-name = "列队行为学 · 动作预览"
-version = "0.1"
-description = [[
+
+local function zh_en(zh, en)  -- Other languages don't work
+    local chinese_languages =
+    {
+        zh = "zh", -- Chinese for Steam
+        zhr = "zh", -- Chinese for WeGame
+        ch = "zh", -- Chinese mod
+        chs = "zh", -- Chinese mod
+        sc = "zh", -- simple Chinese
+        zht = "zh", -- traditional Chinese for Steam
+        tc = "zh", -- traditional Chinese
+        cht = "zh", -- Chinese mod
+    }
+
+    if chinese_languages[locale] ~= nil then
+        lang = chinese_languages[locale]
+    else
+        lang = en
+    end
+
+    return lang ~= "zh" and en or zh
+end
+
+name = zh_en("列队行为学 · 动作预览", "ActionQueue · Action Preview")
+
+description = zh_en(
+[[
 为【ActionQueue RB3】添加动作预览（需同时开启原模组）
 
 动作预览代码基于呼吸的【群鸟绘卷 · 江海󰀃】修改，感谢呼吸
@@ -9,7 +33,19 @@ description = [[
 支持种植植物预览、放置建筑预览、丢弃物品预览、挖地皮预览、耕地预览、浇水预览
 
 兼容原版几何布局&耕地对齐模组
+]],
+[[
+Adds action previews for [ActionQueue RB3] (original mod must be enabled)
+
+Action preview code is based on 呼吸's [群鸟绘卷 · 江海󰀃] — thanks to 呼吸
+
+Supports plant preview, building placement preview, item drop preview, turf digging preview, farm soil tilling preview, and watering preview
+
+Compatible with original Geometric Placement & Snapping tills mods
 ]]
+)
+
+version = "0.1"
 author = "冰冰羊"
 api_version = 10
 priority = -11
@@ -26,8 +62,8 @@ configuration_options =
 {
     {
         name = "number",
-        label = "预览数量",
-        hover = "太多会导致游戏掉帧",
+        label = zh_en("预览数量", "Preview Amount"),
+        hover = zh_en("太多会导致游戏掉帧", "Too many may cause frame drops"),
         options =
         {
             {description = "20", data = 20},
@@ -54,8 +90,8 @@ configuration_options =
     },
     {
         name = "highlight",
-        label = "预览亮度",
-        hover = "感觉主要是影响在黑暗环境下的亮度...",
+        label = zh_en("预览亮度", "Preview Brightness"),
+        hover = zh_en("感觉主要是影响在黑暗环境下的亮度...", "Seems to mainly affect brightness in dark environments..."),
         options = {
             {description = "10%", data = 0.1},
             {description = "20%", data = 0.2},
@@ -72,40 +108,41 @@ configuration_options =
     },
     {
         name = "color",
-        label = "预览颜色",
-        hover = "给预览的物品染个色",
+        label = zh_en("预览颜色", "Preview Color"),
+        hover = zh_en("给预览的物品染个色", "Tint the previewed items with a color"),
         options = { -- 和行为学的设置一致
-            {description = "白色", data = "WHITE"},
-            {description = "红色", data = "FIREBRICK"},
-            {description = "橙色", data = "TAN"},
-            {description = "黄色", data = "LIGHTGOLD"},
-            {description = "绿色",  data = "GREEN"},
-            {description = "青色",   data = "TEAL"},
-            {description = "蓝色" ,  data = "OTHERBLUE"},
-            {description = "紫色", data = "DARKPLUM"},
-            {description = "粉色" ,  data = "ROSYBROWN"},
-            {description = "金色",   data = "GOLDENROD"},
+            {description = zh_en("白色", "White"), data = "WHITE"},
+            {description = zh_en("红色", "Red"), data = "FIREBRICK"},
+            {description = zh_en("橙色", "Orange"), data = "TAN"},
+            {description = zh_en("黄色", "Yellow"), data = "LIGHTGOLD"},
+            {description = zh_en("绿色", "Green"), data = "GREEN"},
+            {description = zh_en("青色", "Teal"), data = "TEAL"},
+            {description = zh_en("蓝色", "Blue"), data = "OTHERBLUE"},
+            {description = zh_en("紫色", "Purple"), data = "DARKPLUM"},
+            {description = zh_en("粉色", "Pink"), data = "ROSYBROWN"},
+            {description = zh_en("金色", "Gold"), data = "GOLDENROD"},
         },
         default = "GREEN",
     },
     {
         name = "dont_color",
-        label = "禁用颜色",
-        hover = "禁用预览颜色，预览物品将变得和真的一样",
+        label = zh_en("禁用颜色", "Disable Color"),
+        hover = zh_en("禁用预览颜色，预览物品将变得和真的一样", "Disable preview color; previewed items will look like the real ones"),
         options = {
-            {description = "是", data = true},
-            {description = "否", data = false},
+            {description = zh_en("是", "Yes"), data = true},
+            {description = zh_en("否", "No"), data = false},
         },
         default = false,
     },
     {
         name = "debug_mode",
-        label = "调试模式",
-        hover = "开启后将在控制台打印各种调试信息",
+        label = zh_en("调试模式", "Debug Mode"),
+        hover = zh_en("开启后将在控制台打印各种调试信息", "Prints debug info to the console when enabled"),
         options = {
-            {description = "是", data = true},
-            {description = "否", data = false},
+            {description = zh_en("是", "Yes"), data = true},
+            {description = zh_en("否", "No"), data = false},
         },
         default = false,
-    }
+    },
+
 }
