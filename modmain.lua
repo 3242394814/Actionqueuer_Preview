@@ -351,20 +351,25 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
                     if not ent:HasTag("NOCLICK") then
                         accessible_pos = false
                         break
-                    end -- Skip Tilling this position
+                    end -- 跳过此耕地位置
                 end
-            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not (deploy_fn == self.DropActiveItem) and  -- 鼠标拿着物品&不要是丢弃物品状态
-                    not (
+            elseif ThePlayer.replica.inventory and
+                    ThePlayer.replica.inventory:GetActiveItem() and
+                    ThePlayer.replica.inventory:GetActiveItem().replica and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
+                    not ( -- 不满足可以放置在此点位的要求
                         (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说不能放在此点位
+                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
                             )
                         )
                         or
-                        (TheWorld.Map:CanDeployAtPoint( -- 不能放置在此点位
+                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                    ThePlayer.replica.inventory:GetActiveItem()
-                                )
+                                nil, nil,
+                                ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer:GetRotation() or nil)
                         )
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
@@ -760,20 +765,26 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
                     if not ent:HasTag("NOCLICK") then
                         accessible_pos = false
                         break
-                    end -- Skip Tilling this position
+                    end -- 跳过此耕地位置
                 end
-            elseif ThePlayer.replica.inventory and ThePlayer.replica.inventory:GetActiveItem() and not compat_gp_mod and  -- 鼠标拿着物品&不要是丢弃物品状态
+            elseif ThePlayer.replica.inventory and
+                    ThePlayer.replica.inventory:GetActiveItem() and
+                    ThePlayer.replica.inventory:GetActiveItem().replica and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
+                    ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
                     not ( -- 不满足可以放置在此点位的要求
                         (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
                             ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
                             )
                         )
-                        or -- 这里需要对植物进行额外判断....
-                        (TheWorld.Map:CanDeployAtPoint( -- 通用规则说能放置在此点位
+                        or
+                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
                                 accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                    ThePlayer.replica.inventory:GetActiveItem()
-                                )
+                                nil, nil,
+                                meta.rotation or nil
+                            )
                         )
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
