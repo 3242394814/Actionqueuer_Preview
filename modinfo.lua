@@ -45,7 +45,7 @@ Compatible with original Geometric Placement & Snapping tills mods
 ]]
 )
 
-version = "0.1"
+version = "0.1.1"
 author = "冰冰羊"
 api_version = 10
 priority = -11
@@ -60,6 +60,16 @@ icon_atlas = "images/modicon.xml"
 icon = "modicon.tex"
 configuration_options =
 {
+    {
+        name = "preview_able",
+        label = zh_en("预览功能", "Preview function"),
+        hover = zh_en("是否开启预览功能？", "Do you want to enable preview?"),
+        options = {
+            {description = zh_en("开启", "Enable"), data = true},
+            {description = zh_en("关闭", "Disable"), data = false},
+        },
+        default = true,
+    },
     {
         name = "number",
         label = zh_en("预览数量", "Preview Amount"),

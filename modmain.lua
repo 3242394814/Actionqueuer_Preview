@@ -50,6 +50,7 @@ local GetAQConfigData = function(name)
             KnownModIndex:IsModEnabledAny("workshop-2873533916") and GLOBAL.GetModConfigData(name, "workshop-2873533916")
 end
 
+AQ_Preview_able = GetModConfigData("preview_able")
 AQ_preview_max = GetModConfigData("number") or 80
 AQ_preview_color = PLAYERCOLOURS[GetModConfigData("color")] or PLAYERCOLOURS["GREEN"] -- 颜色
 AQ_preview_dont = GetModConfigData("dont_color") or false -- 不要变色
@@ -817,13 +818,15 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
 end
 
 function ActionQueuer:SpawnPreview(pos, meta)
+    if not AQ_Preview_able then
+        return
+    end
     -- 不在不可种 和 已经种的表
     local id = tostring(pos)
     if not self.preview_eds[id] and not self.preview_curs[id] then
         local ent
         local me = meta.ent
         if me then
-            print("DEBUGmeta", me.prefab, me.skinname, me.skin_id)
             meta.prefab, meta.skin, meta.skin_id = me.prefab, me.skinname, me.skin_id
         end
         if not ent then
