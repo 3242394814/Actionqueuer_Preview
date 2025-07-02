@@ -28,24 +28,24 @@ description = zh_en(
 [[
 为【ActionQueue RB3】添加动作预览（需同时开启原模组）
 
-动作预览代码基于呼吸的【群鸟绘卷 · 江海󰀃】修改，感谢呼吸
+动作预览代码基于呼吸的【群鸟绘卷 秋处露秋】修改，感谢呼吸
 
-支持种植植物预览、放置建筑预览、丢弃物品预览、挖地皮预览、耕地预览、浇水预览
+支持种植植物预览、放置建筑预览、丢弃物品预览、挖地皮预览、耕地预览、浇水预览、施肥预览等..
 
 兼容原版几何布局&耕地对齐模组
 ]],
 [[
 Adds action previews for [ActionQueue RB3] (original mod must be enabled)
 
-Action preview code is based on 呼吸's [群鸟绘卷 · 江海󰀃] — thanks to 呼吸
+Action preview code is based on 呼吸's [群鸟绘卷 秋处露秋] — thanks to 呼吸
 
-Supports plant preview, building placement preview, item drop preview, turf digging preview, farm soil tilling preview, and watering preview
+Supports plant preview, building placement preview, item drop preview, turf digging preview, farm soil tilling preview, watering preview ...
 
 Compatible with original Geometric Placement & Snapping tills mods
 ]]
 )
 
-version = "0.1.1"
+version = "0.1.2"
 author = "冰冰羊"
 api_version = 10
 priority = -11

@@ -1,49 +1,11 @@
+---@diagnostic disable: need-check-nil
 GLOBAL.setmetatable(env, {
     __index = function(t, k)
         return GLOBAL.rawget(GLOBAL, k)
     end
 })
-local function getval(fn, path)
-	if fn == nil or type(fn)~="function" then return end
-	local val = fn
-	local i
-	for entry in path:gmatch("[^%.]+") do
-		i = 1
-		while true do
-			local name, value = debug.getupvalue(val, i)
-			if name == entry then
-				val = value
-				break
-			elseif name == nil then
-				return
-			end
-			i = i + 1
-		end
-	end
-	return val, i
-end
 
-local function setval(fn, path, new)
-	if fn == nil or type(fn)~="function" then return end
-	local val = fn
-	local prev = nil
-	local i
-	for entry in path:gmatch("[^%.]+") do
-		i = 1
-		prev = val
-		while true do
-			local name, value = debug.getupvalue(val, i)
-			if name == entry then
-				val = value
-				break
-			elseif name == nil then
-				return
-			end
-			i = i + 1
-		end
-	end
-	debug.setupvalue(prev, i, new)
-end
+local upvaluehelper = require("utils/bbgoat_upvaluehelper")
 
 local GetAQConfigData = function(name)
     return KnownModIndex:IsModEnabledAny("workshop-3018652965") and GLOBAL.GetModConfigData(name, "workshop-3018652965") or
@@ -60,7 +22,15 @@ AQ_highlight = GetModConfigData("highlight") or 0.3
 local GeoUtil = require("utils/geoutil")
 local headings = {[0] = true, [45] = false, [90] = false, [135] = true, [180] = true, [225] = false, [270] = false, [315] = true, [360] = true}
 local easy_stack = {minisign_item = "structure", minisign_drawn = "structure", spidereggsack = "spiderden"}
-local deploy_spacing = {wall = 1, fence = 1, trap = GetAQConfigData("tooth_trap_spacing") or 2, mine = 2, turf = 4, moonbutterfly = 4}
+local deploy_spacing = {
+    wall = 1,
+    fence = 1,
+    trap = GetAQConfigData("tooth_trap_spacing") or 2,
+    mine = 2,
+    turf = 4,
+    moonbutterfly = 4,
+    farm_plow_item = 4, -- 耕地机(冰冰羊新增的)
+}
 local drop_spacing = {trap = 2}
 local action_thread_id = "actionqueue_action_thread"
 
@@ -165,7 +135,7 @@ end
 
 if gp_mod then
     AddClassPostConstruct("components/builder_replica", function(inst)
-        gp_mod_Snap = getval(inst.MakeRecipeAtPoint,"Snap")
+        gp_mod_Snap = upvaluehelper.GetUpvalue(inst.MakeRecipeAtPoint,"Snap")
     end)
     gp_mod_CTRL_setting = function()
         return GLOBAL.GetModConfigData("CTRL","workshop-351325790")
@@ -583,7 +553,6 @@ local function GetAPrefabCount(prefab)
             or
             ent.replica.stackable and ent.replica.stackable:StackSize() or 1) + count -- 否则按堆叠数算
     end
-
     return count
 end
 
@@ -799,7 +768,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
             end
 
             if accessible_pos and gp_mod_Snap and not compat_gp_mod then  -- 如果获取到几何布局的对齐网格点函数 and 当前不为丢弃物品操作
-                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm then -- 启用网格对齐&不在耕地状态(耕地的点位对齐不符合要求)
+                if gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and not snap_farm and not terraforming then -- 启用网格对齐&不在耕地状态(耕地的点位对齐不符合要求)&不是对地皮进行操作
                     accessible_pos = gp_mod_Snap(accessible_pos)
                 end
             end
@@ -878,6 +847,9 @@ function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize,
     end
 end
 
+local Blacklist = {
+    butterfly = true, -- 蝴蝶：无法预测-预测不准确 因为花朵有大有小
+}
 function ActionQueuer:SetPreview(rightclick)
     -- 初始位置, 最终位置, 间隔，上限-》预览
     if next(self.selected_ents) then
@@ -886,6 +858,11 @@ function ActionQueuer:SetPreview(rightclick)
     if rightclick then
         local active_item = self:GetActiveItem()
         if active_item then
+
+            if Blacklist[active_item.prefab] then -- 黑名单物品
+                return ActionQueuer:ClearPreview()
+            end
+
             if easy_stack[active_item.prefab] then -- 种植小木牌的
                 local ent = TheInput:GetWorldEntityUnderMouse()
                 if ent and ent:HasTag(easy_stack[active_item.prefab]) then
