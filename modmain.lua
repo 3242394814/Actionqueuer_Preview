@@ -22,13 +22,6 @@ local mouse_controls
 local default_aq_queuekey
 local IsHUDEntity -- HUD
 
--- 本模组设置
-local preview_able = GetModConfigData("preview_able") -- 预览功能
-local preview_max = GetModConfigData("number") or 80 -- 预览数量
-local preview_color = PLAYERCOLOURS[GetModConfigData("color")] or PLAYERCOLOURS["GREEN"] -- 预览颜色
-local preview_dont = GetModConfigData("dont_color") or false -- 禁用颜色
-local highlight = GetModConfigData("highlight") or 0.3 -- 预览亮度
-
 -- 兼容几何布局
 local gp_mod = KnownModIndex:IsModEnabledAny("workshop-351325790")
 local gp_mod_Snap = nil
@@ -400,7 +393,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
 end
 
 function ActionQueuer:SpawnPreview(pos, meta)
-    if not preview_able then
+    if not self.preview_able then
         return
     end
     -- 不在不可种 和 已经种的表
@@ -435,7 +428,7 @@ function ActionQueuer:SpawnPreview(pos, meta)
             local anim = ent.AnimState
             if anim then
                 anim:SetLightOverride(self.preview_highlight)
-                if not self.preview_dont then
+                if not self.preview_dont_color then
                     local r, g, b, t = unpack(self.preview_color)
                     anim:OverrideMultColour(r, g, b, t)
                     anim:SetAddColour(r, g, b, t)
@@ -640,6 +633,16 @@ AddComponentPostInit("playercontroller", function(self, inst)
     if inst ~= ThePlayer then return end
 
     ActionQueuer.inst = inst
+    -- 本模组设置/魔改部分
+    ActionQueuer.preview_able = MOD_util:GetMOption("preview_able", true) -- 预览功能总开关
+    ActionQueuer.preview_curs = {} -- 当前:存实体
+    ActionQueuer.preview_eds = {} -- 已种：存true
+    ActionQueuer.preview_highlight = MOD_util:GetMOption("preview_highlight", 0.3)
+    ActionQueuer.preview_max = MOD_util:GetMOption("preview_max", 80) -- 预览最大数量
+    ActionQueuer.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", "GREEN")] -- 颜色
+    ActionQueuer.preview_dont_color = MOD_util:GetMOption("preview_dont_color", false) -- 不要变色
+
+
     TheInput:AddMoveHandler(function(x, y)
         ActionQueuer.queued_preview_movement = true
     end)
@@ -655,20 +658,13 @@ AddComponentPostInit("playercontroller", function(self, inst)
     default_aq_queuekey = upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
     IsHUDEntity = upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
+    ActionQueuer.userid = AQ_ActionQueuer.inst.userid -- 自己的id
+
     setmetatable(ActionQueuer, {
         __index = function(t, k)
             return AQ_ActionQueuer[k]
         end
     })
-
-    -- 魔改部分
-    ActionQueuer.preview_curs = {} -- 当前:存实体
-    ActionQueuer.preview_eds = {} -- 已种：存true
-    ActionQueuer.userid = AQ_ActionQueuer.inst.userid -- 自己的id
-    ActionQueuer.preview_highlight = highlight
-    ActionQueuer.preview_max = preview_max -- 预览最大数量
-    ActionQueuer.preview_color = preview_color -- 颜色
-    ActionQueuer.preview_dont = preview_dont -- 不要变色
 
     local PlayerControllerOnControl = self.OnControl
     self.OnControl = function(self, control, down)
@@ -879,3 +875,111 @@ AddComponentPostInit("playercontroller", function(self, inst)
     end
 
 end)
+
+--------------------模组设置界面-------------------
+if not MOD_util:CanAddSetting() then
+    return
+end
+local pagename = "排队论预览"
+local pageorder = 1
+local buttonname = pagename
+local pagetitle = "黑化排队论 · 动作预览设置"
+local enabledisableoption = { { text = "禁用", data = false }, { text = "启用", data = true } }
+MOD_util:CreatePage(pagename, {
+    title = pagetitle,
+    buttondata = { name = buttonname },
+    order = pageorder,
+    all_options = {
+        {
+            description = "预览功能", -- 名称
+            key = "preview_able", -- 对应设置项
+            default = true, -- 默认选项
+            options = enabledisableoption, -- 选项列表
+            onapplyfn = function()
+                ActionQueuer.preview_able = MOD_util:GetMOption("preview_able", true)
+            end
+        },
+        {
+            description = "预览数量", -- 名称
+            key = "preview_max", -- 对应设置项
+            default = 80, -- 默认选项
+            options = {
+                {text = "20", data = 20},
+                {text = "25", data = 25},
+                {text = "30", data = 30},
+                {text = "35", data = 35},
+                {text = "40", data = 40},
+                {text = "50", data = 50},
+                {text = "60", data = 60},
+                {text = "70", data = 70},
+                {text = "80", data = 80},
+                {text = "90", data = 90},
+                {text = "100", data = 100},
+                {text = "120", data = 120},
+                {text = "160", data = 160},
+                {text = "200", data = 200},
+                {text = "250", data = 250},
+                {text = "300", data = 300},
+                {text = "400", data = 400},
+                {text = "500", data = 500},
+                {text = "1000", data = 1000},
+            },
+            onapplyfn = function()
+                ActionQueuer.preview_max = MOD_util:GetMOption("preview_max", true)
+            end
+        },
+        {
+            description = "预览亮度", -- 名称
+            key = "preview_highlight", -- 对应设置项
+            default = 0.3, -- 默认选项
+            options = {
+                {text = "10%", data = 0.1},
+                {text = "20%", data = 0.2},
+                {text = "30%", data = 0.3},
+                {text = "40%", data = 0.4},
+                {text = "50%", data = 0.5},
+                {text = "60%", data = 0.6},
+                {text = "70%", data = 0.7},
+                {text = "80%", data = 0.8},
+                {text = "90%", data = 0.9},
+                {text = "100%", data = 1},
+            },
+            onapplyfn = function()
+                ActionQueuer.preview_highlight = MOD_util:GetMOption("preview_highlight", true)
+            end
+        },
+        {
+            description = "预览颜色", -- 名称
+            key = "preview_color", -- 对应设置项
+            default = "GREEN", -- 默认选项
+            options = {
+                {text = "白色", data = "WHITE"},
+                {text = "红色", data = "FIREBRICK"},
+                {text = "橙色", data = "TAN"},
+                {text = "黄色", data = "LIGHTGOLD"},
+                {text = "绿色", data = "GREEN"},
+                {text = "青色", data = "TEAL"},
+                {text = "蓝色", data = "OTHERBLUE"},
+                {text = "紫色", data = "DARKPLUM"},
+                {text = "粉色", data = "ROSYBROWN"},
+                {text = "金色", data = "GOLDENROD"},
+            },
+            onapplyfn = function()
+                ActionQueuer.preview_color = MOD_util:GetMOption("preview_color", true)
+            end
+        },
+        {
+            description = "禁用颜色", -- 名称
+            key = "preview_dont_color", -- 对应设置项
+            default = false, -- 默认选项
+            options = {
+                {text = "是", data = true},
+                {text = "否", data = false},
+            },
+            onapplyfn = function()
+                ActionQueuer.preview_dont_color = MOD_util:GetMOption("preview_dont_color", true)
+            end
+        },
+    }
+}
+)
