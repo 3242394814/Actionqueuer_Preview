@@ -6,6 +6,11 @@ GLOBAL.setmetatable(env, {
     end
 })
 
+if not KnownModIndex:IsModEnabledAny("workshop-3136701076") then
+    print("[黑化排队论 · 动作预览] 检测到黑化排队论本体未开启，停止加载！")
+    return
+end
+
 local upvaluehelper = require("utils/bbgoat_upvaluehelper")
 local AQ_ActionQueuer
 
