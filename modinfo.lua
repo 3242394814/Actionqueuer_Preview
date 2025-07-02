@@ -12,7 +12,7 @@ description = [[
 本Mod设置请订阅萌萌的新发布的【模组设置】Mod来调整
 ]]
 
-version = "0.1"
+version = "2025-07-02"
 author = "冰冰羊"
 api_version = 10
 priority = -11

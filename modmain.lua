@@ -6,7 +6,7 @@ GLOBAL.setmetatable(env, {
     end
 })
 
-local upvaluehelper = require "utils/bbgoat_upvaluehelper"
+local upvaluehelper = require("utils/bbgoat_upvaluehelper")
 local AQ_ActionQueuer
 
 local MOD_util = require("utils/MOD_util")
