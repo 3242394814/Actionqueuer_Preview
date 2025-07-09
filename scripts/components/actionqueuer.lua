@@ -107,7 +107,7 @@ end)
 --[[leftclick]]
 AddActionList("leftclick", "ADDFUEL", "ADDWETFUEL", "CHECKTRAP", "COMBINESTACK", "COOK", "DECORATEVASE", "DIG", "DRAW", "DRY",
 "EAT", "FERTILIZE", "FILL", "GIVE", "HAUNT", "LOWER_SAIL_BOOST", "PLANT", "RAISE_SAIL", "REPAIR_LEAK", "SEW", "TAKEITEM", "UPGRADE", 
-"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE")
+"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE", "ADD_CARD_TO_DECK")
 
 AddAction("leftclick", "ACTIVATE", function(target)
     return target.prefab == "dirtpile" or (target.prefab == "winona_catapult")
@@ -136,7 +136,7 @@ end)
 
 -- 210203 null: added support for leftclick FEED, when Walter feeds small Woby
 AddAction("leftclick", "FEED", function(target)
-    return target.prefab == "wobysmall"
+    return target.prefab == "wobysmall" or target.prefab == "wobybig" or target == ThePlayer or not target:HasTag("player")
 end)
 
 -- 210226 null: added support for left click Wickerbottom book on self for READ (for Wickerbottom / Maxwell)
@@ -149,7 +149,7 @@ end)
 --[[rightclick]]
 AddActionList("rightclick", "CASTSPELL", "COOK", "DIG", "DISMANTLE", "FEEDPLAYER", "HAMMER", "REPAIR", "RESETMINE", "TURNON",
 "TURNOFF", "UNWRAP", "TAKEITEM", "POUR_WATER", "DEPLOY_TILEARRIVE", "OCEAN_TRAWLER_LOWER", "OCEAN_TRAWLER_RAISE",
-"SCYTHE", "START_PUSHING")
+"SCYTHE", "START_PUSHING", "DRAW_FROM_DECK")
 
 -- 201218 null: added support for right click PICK while equipping plantregistryhat
 AddAction("rightclick", "PICK", function(target)
@@ -175,9 +175,13 @@ AddAction("rightclick", "INTERACT_WITH", function(target)
     return ThePlayer:HasTag("plantkin")
 end)
 
--- 210203 null: added support for rightclick FEED, when Walter feeds big Woby
-AddAction("rightclick", "FEED", function(target)
-    return target.prefab == "wobybig"
+AddAction("rightclick", "PICKUP", function(target)
+    return target:HasTag("spider")
+end)
+
+AddAction("rightclick", "NABBAG", function(target)
+    return target.prefab ~= "trap" and target.prefab ~= "birdtrap"
+       and not target:HasTag("mineactive") and not target:HasTag("minesprung")
 end)
 
 --[[single]]
@@ -185,7 +189,7 @@ AddActionList("single", "CASTSPELL", "DECORATEVASE", "REPAIR_LEAK")
 
 --[[noworkdelay]]
 AddActionList("noworkdelay", "ADDFUEL", "ADDWETFUEL", "CHOP", "COOK", "DIG", "DRY", "EAT", "FERTILIZE", "FILL", "HAMMER",
-"HARVEST", "HEAL", "MINE", "PLANT", "REPAIR", "TERRAFORM", "ADDCOMPOSTABLE", "DEPLOY_TILEARRIVE", "PICKUP")
+"HARVEST", "HEAL", "MINE", "PLANT", "REPAIR", "TERRAFORM", "ADDCOMPOSTABLE", "DEPLOY_TILEARRIVE", "PICKUP", "NABBAG")
 
 AddAction("noworkdelay", "GIVE", function(target)
     return target:HasTag("trader")

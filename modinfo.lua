@@ -1,7 +1,7 @@
 name = "ActionQueue RB3汉化版"
 description = ""
 author = "Cutlass / null / eXiGe / simplex(Original Author)"
-version = "2.9"
+version = "3.1"
 api_version_dst = 10
 
 description = '此模组汉化自Cutlass的ActionQueue RB3！请支持原作者！'
