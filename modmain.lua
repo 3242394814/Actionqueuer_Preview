@@ -1772,6 +1772,13 @@ local allowed_actions = {
                 or act.target and act.target.prefab == 'magician_chest' and
                 not act.target.AnimState:IsCurrentAnimation("closed")
         end,
+        reselectfn = function(act)
+            if act.target and act.target.prefab == "meatrack" then
+                for i = 1, 3 do
+                    SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
+                end
+            end
+        end,
     },
     ['MIGRATE'] = {
         dontselectbyselectbox = true,
@@ -3620,6 +3627,9 @@ end
 
 --高亮
 function ActionQueuer:HighlightEntity(ent)
+    if not MOD_util:GetMOption("aq_highlight", true) then
+        return
+    end
     if not ent.components.highlight then
         ent:AddComponent("highlight")
     end
@@ -3889,21 +3899,21 @@ end)
 AddClassPostConstruct("components/builder_replica", function(self)
     -- 制作物品
     local BuilderReplicaMakeRecipeFromMenu = self.MakeRecipeFromMenu
-    function self:MakeRecipeFromMenu(recipe, skin)
+    function self:MakeRecipeFromMenu(recipe, skin, ...)
         -- 记录上次制作的物品和皮肤
         last_recipe, last_skin = recipe, skin
         data.recipe, data.skin = recipe, skin
         RW_util:SaveData(data, 'lastcraft')
-        return BuilderReplicaMakeRecipeFromMenu(self, recipe, skin)
+        return BuilderReplicaMakeRecipeFromMenu(self, recipe, skin, ...)
     end
 
     -- 制作建筑
     local BuilderReplicaMakeRecipeAtPoint = self.MakeRecipeAtPoint
-    function self:MakeRecipeAtPoint(recipe, pt, rot, skin)
+    function self:MakeRecipeAtPoint(recipe, pt, rot, skin, ...)
         last_recipe, last_skin = recipe, skin
         data.recipe, data.skin = recipe, skin
         RW_util:SaveData(data, 'lastcraft')
-        return BuilderReplicaMakeRecipeAtPoint(self, recipe, pt, rot, skin)
+        return BuilderReplicaMakeRecipeAtPoint(self, recipe, pt, rot, skin, ...)
     end
 end)
 
@@ -4292,7 +4302,7 @@ if MOD_util:CanAddSetting() then
                 key = "aq_queuekey",
                 default = default_aq_queuekey,
             },
-            MakeOption("aq_highlight", "高亮显示选中目标(此选项无效果)", true, enabledisableoption),
+            MakeOption("aq_highlight", "高亮显示选中目标", true, enabledisableoption),
             {
                 description = "网格显示按键",
                 MapKey = true,
