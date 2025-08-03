@@ -11,7 +11,7 @@ if not KnownModIndex:IsModEnabledAny("workshop-3136701076") then
     return
 end
 
-local upvaluehelper = require("utils/bbgoat_upvaluehelper")
+local Upvaluehelper = require("utils/bbgoat_upvaluehelper")
 local AQ_ActionQueuer
 
 local MOD_util = require("utils/MOD_util")
@@ -39,7 +39,7 @@ end
 
 if gp_mod then
     AddClassPostConstruct("components/builder_replica", function(inst)
-        gp_mod_Snap = upvaluehelper.GetUpvalue(inst.MakeRecipeAtPoint,"Snap")
+        gp_mod_Snap = Upvaluehelper.GetUpvalue(inst.MakeRecipeAtPoint,"Snap")
     end)
     gp_mod_CTRL_setting = function()
         return GLOBAL.GetModConfigData("CTRL","workshop-351325790")
@@ -652,22 +652,22 @@ AddComponentPostInit("playercontroller", function(self, inst)
         ActionQueuer.queued_preview_movement = true
     end)
 
-    AQ_ActionQueuer = upvaluehelper.GetUpvalue(self.OnControl,"ActionQueuer")
-    farm_spacing = upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"farm_spacing")
-    farm3x3_offset = upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"farm3x3_offset")
-    GetHeadingDir = upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetHeadingDir")
+    AQ_ActionQueuer = Upvaluehelper.GetUpvalue(self.OnControl,"ActionQueuer")
+    farm_spacing = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"farm_spacing")
+    farm3x3_offset = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"farm3x3_offset")
+    GetHeadingDir = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetHeadingDir")
     double_snake = true -- 萌萌的新写的
-    GetAccessibleTilePosition = upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
-    easy_stack = upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"easy_stack")
-    mouse_controls = { [CONTROL_PRIMARY] = false, [CONTROL_SECONDARY] = true } -- upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls") -- 2个都是true 什么情况
-    default_aq_queuekey = upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
-    IsHUDEntity = upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
+    GetAccessibleTilePosition = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
+    easy_stack = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"easy_stack")
+    mouse_controls = { [CONTROL_PRIMARY] = false, [CONTROL_SECONDARY] = true } -- Upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls") -- 2个都是true 什么情况
+    default_aq_queuekey = Upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
+    IsHUDEntity = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
     ActionQueuer.userid = AQ_ActionQueuer.inst.userid -- 自己的id
 
-    setmetatable(ActionQueuer, {
+    GLOBAL.setmetatable(ActionQueuer, {
         __index = function(t, k)
-            return AQ_ActionQueuer[k]
+            return GLOBAL.rawget(AQ_ActionQueuer, k)
         end
     })
 

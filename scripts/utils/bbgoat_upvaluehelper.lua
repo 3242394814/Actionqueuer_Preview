@@ -126,8 +126,8 @@ end
 
 --调用示例 获取指定事件的函数 并移除
 --[[
-	local upvaluehelper = require "utils/upvaluehelp"
-	local fn = upvaluehelper.GetEventHandle(TheWorld,"ms_lightwildfireforplayer","components/wildfires")
+	local Upvaluehelper = require "utils/bbgoat_upvaluehelper"
+	local fn = Upvaluehelper.GetEventHandle(TheWorld,"ms_lightwildfireforplayer","components/wildfires")
 
 
 	if fn then
