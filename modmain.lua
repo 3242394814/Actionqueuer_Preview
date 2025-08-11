@@ -5,7 +5,15 @@ GLOBAL.setmetatable(env, {
     end
 })
 
-local upvaluehelper = require("utils/bbgoat_upvaluehelper")
+local function Import(modulename)
+	local f = GLOBAL.kleiloadlua(modulename)
+	if f and type(f) == "function" then
+        setfenv(f, env.env) -- 本模组本体环境
+        return f()
+	end
+end
+
+local Upvaluehelper = Import(MODROOT .. "scripts/utils/bbgoat_upvaluehelper.lua")
 
 local GetAQConfigData = function(name)
     return KnownModIndex:IsModEnabledAny("workshop-3018652965") and GLOBAL.GetModConfigData(name, "workshop-3018652965") or
@@ -135,7 +143,7 @@ end
 
 if gp_mod then
     AddClassPostConstruct("components/builder_replica", function(inst)
-        gp_mod_Snap = upvaluehelper.GetUpvalue(inst.MakeRecipeAtPoint,"Snap")
+        gp_mod_Snap = Upvaluehelper.GetUpvalue(inst.MakeRecipeAtPoint,"Snap")
     end)
     gp_mod_CTRL_setting = function()
         return GLOBAL.GetModConfigData("CTRL","workshop-351325790")
