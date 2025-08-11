@@ -126,15 +126,12 @@ end
 
 --调用示例 获取指定事件的函数 并移除
 --[[
-	local Upvaluehelper = require "utils/bbgoat_upvaluehelper"
 	local fn = Upvaluehelper.GetEventHandle(TheWorld,"ms_lightwildfireforplayer","components/wildfires")
-
 
 	if fn then
 		TheWorld:RemoveEventCallback("ms_lightwildfireforplayer",fn)
 	end
-
-]]--
+]]
 
 local function GetEventHandle(inst,event,file,test)
 	if type(inst) == "table" then

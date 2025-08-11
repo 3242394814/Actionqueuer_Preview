@@ -11,7 +11,15 @@ if not KnownModIndex:IsModEnabledAny("workshop-3136701076") then
     return
 end
 
-local Upvaluehelper = require("utils/bbgoat_upvaluehelper")
+local function Import(modulename)
+	local f = GLOBAL.kleiloadlua(modulename)
+	if f and type(f) == "function" then
+        setfenv(f, env.env) -- 本模组本体环境
+        return f()
+	end
+end
+
+local Upvaluehelper = Import(MODROOT .. "scripts/utils/bbgoat_upvaluehelper.lua")
 local AQ_ActionQueuer
 
 local MOD_util = require("utils/MOD_util")
