@@ -106,8 +106,8 @@ end)
 
 --[[leftclick]]
 AddActionList("leftclick", "ADDFUEL", "ADDWETFUEL", "CHECKTRAP", "COMBINESTACK", "COOK", "DECORATEVASE", "DIG", "DRAW", "DRY",
-"EAT", "FERTILIZE", "FILL", "GIVE", "HAUNT", "LOWER_SAIL_BOOST", "PLANT", "RAISE_SAIL", "REPAIR_LEAK", "SEW", "TAKEITEM", "UPGRADE", 
-"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE", "ADD_CARD_TO_DECK")
+"FERTILIZE", "FILL", "GIVE", "HAUNT", "LOWER_SAIL_BOOST", "PLANT", "RAISE_SAIL", "REPAIR_LEAK", "SEW", "TAKEITEM", "UPGRADE", 
+"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE", "ADD_CARD_TO_DECK", "REMOVELUNARBUILDUP")
 
 AddAction("leftclick", "ACTIVATE", function(target)
     return target.prefab == "dirtpile" or (target.prefab == "winona_catapult")
@@ -189,7 +189,8 @@ AddActionList("single", "CASTSPELL", "DECORATEVASE", "REPAIR_LEAK")
 
 --[[noworkdelay]]
 AddActionList("noworkdelay", "ADDFUEL", "ADDWETFUEL", "CHOP", "COOK", "DIG", "DRY", "EAT", "FERTILIZE", "FILL", "HAMMER",
-"HARVEST", "HEAL", "MINE", "PLANT", "REPAIR", "TERRAFORM", "ADDCOMPOSTABLE", "DEPLOY_TILEARRIVE", "PICKUP", "NABBAG")
+"HARVEST", "HEAL", "MINE", "PLANT", "REPAIR", "TERRAFORM", "ADDCOMPOSTABLE", "DEPLOY_TILEARRIVE", "PICKUP", "NABBAG",
+"REMOVELUNARBUILDUP")
 
 AddAction("noworkdelay", "GIVE", function(target)
     return target:HasTag("trader")
@@ -199,10 +200,10 @@ AddAction("noworkdelay", "NET", function(target)
 end)
 
 --[[tools]]
-AddActionList("tools", "ATTACK", "CHOP", "DIG", "HAMMER", "MINE", "NET", "SCYTHE")
+AddActionList("tools", "ATTACK", "CHOP", "DIG", "HAMMER", "MINE", "NET", "SCYTHE", "REMOVELUNARBUILDUP")
 
 --[[autocollect]]
-AddActionList("autocollect", "CHOP", "DIG", "HAMMER", "HARVEST", "MINE", "PICK", "PICKUP", "RESETMINE", "SCYTHE")
+AddActionList("autocollect", "CHOP", "DIG", "HAMMER", "HARVEST", "MINE", "PICK", "PICKUP", "RESETMINE", "SCYTHE", "REMOVELUNARBUILDUP")
 AddAction("autocollect", "GIVE", function(target)
     return target.prefab ~= "mushroom_farm" and target.prefab ~= "moonbase" and not target:HasTag("gemsocket")
 end)
