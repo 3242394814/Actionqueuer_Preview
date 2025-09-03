@@ -978,7 +978,7 @@ MOD_util:CreatePage(pagename, {
                 {text = "金色", data = "GOLDENROD"},
             },
             onapplyfn = function()
-                ActionQueuer.preview_color = MOD_util:GetMOption("preview_color", true)
+                ActionQueuer.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", true)]
             end
         },
         {
