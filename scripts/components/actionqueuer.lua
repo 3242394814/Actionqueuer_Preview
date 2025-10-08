@@ -146,6 +146,58 @@ AddAction("leftclick", "READ", function(target)
            target == ThePlayer -- 210226 null: only queue READ if ThePlayer is using a book on themselves
 end)
 
+AddAction("leftclick", "STORE", function(target)
+    if target.prefab ~= "meatrack" then
+        return false
+    end
+
+    target._aq_block_rummage = true
+
+    if target._aq_block_rummage_task then
+        target._aq_block_rummage_task:Cancel()
+        target._aq_block_rummage_task = nil
+    end
+    target._aq_block_rummage_task = target:DoTaskInTime(1.5, function()
+        target._aq_block_rummage = false
+    end)
+
+    local container = target.replica.container
+    for i = 1, container:GetNumSlots() do
+        local item = container:GetItemInSlot(i)
+        if item == nil or (item and not item:HasTag("dryable")) then
+            return true
+        end
+    end
+    return false
+end)
+
+AddAction("leftclick", "RUMMAGE", function(target)
+    if target.prefab ~= "meatrack" then
+        return false
+    end
+
+    if target._aq_block_rummage then
+        return false
+    end
+
+    local container = target.replica.container
+    for i = 1, container:GetNumSlots() do
+        local item = container:GetItemInSlot(i)
+
+        if container:IsOpenedBy(ThePlayer) then
+            if item and not item:HasTag("dryable") then
+                return true
+            end
+        else
+            if item == nil or (item and not item:HasTag("dryable")) then
+                return true
+            end
+        end
+
+    end
+    return false
+end)
+
 --[[rightclick]]
 AddActionList("rightclick", "CASTSPELL", "COOK", "DIG", "DISMANTLE", "FEEDPLAYER", "HAMMER", "REPAIR", "RESETMINE", "TURNON",
 "TURNOFF", "UNWRAP", "TAKEITEM", "POUR_WATER", "DEPLOY_TILEARRIVE", "OCEAN_TRAWLER_LOWER", "OCEAN_TRAWLER_RAISE",
@@ -409,6 +461,29 @@ function ActionQueuer:SendAction(act, rightclick, target)
     end
     local pos = act:GetActionPoint() or self.inst:GetPosition()
     local controlmods = 10 --force stack and force attack
+
+    if act.action == ACTIONS.STORE and target and target.replica.container then
+        local container = target.replica.container
+        for i = 1, container:GetNumSlots() do
+            local item = container:GetItemInSlot(i)
+            if item and not item:HasTag("dryable") then
+                SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, target)
+                break
+            end
+        end
+    end
+
+    if act.action == ACTIONS.RUMMAGE and target and target.replica.container then
+        local container = target.replica.container
+        for i = 1, container:GetNumSlots() do
+            local item = container:GetItemInSlot(i)
+            if item and not item:HasTag("dryable") then
+                SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, target)
+                return
+            end
+        end
+    end
+
     if playercontroller.locomotor then
         act.preview_cb = function()
             if rightclick then

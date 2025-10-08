@@ -14,6 +14,15 @@ local ActionQueuer
 local ThePlayer
 local TheWorld
 
+local languages = GetModConfigData("Languages")
+if languages == "english" then
+    modimport("scripts/aq_strings_en.lua")
+elseif languages == "korean" then
+    modimport("scripts/aq_strings_kr.lua")
+else
+    modimport("scripts/aq_strings_cn.lua")
+end
+
 PLAYERCOLOURS.WHITE = {1, 1, 1, 1}
 
 Assets = {
@@ -29,7 +38,7 @@ end
 -- 220225 null: support for littledro's QAAQ mod
 local qaaq = GetModConfigData("qaaq")
 if qaaq then
-    interrupt_controls[_G.CONTROL_ACTION] = false
+	interrupt_controls[_G.CONTROL_ACTION] = false
 end
 
 local mouse_controls = {[_G.CONTROL_PRIMARY] = false, [_G.CONTROL_SECONDARY] = true}
@@ -92,40 +101,37 @@ TheInput:AddKeyUpHandler(GetKeyFromConfig("auto_collect_key"), function()
         ActionQueuer.auto_collect = not ActionQueuer.auto_collect -- 220225 null: original autocollect toggle
     end
 
-    
     if ActionQueuer.auto_collect == "chop_mod" then
-        auto_collect_CN = "砍树模式"
+        auto_collect_lang = STRINGS.AQ_AUTOCOLLECT_CHOP
     elseif ActionQueuer.auto_collect == "normal" then
-        auto_collect_CN = "正常模式"
+        auto_collect_lang = STRINGS.AQ_AUTOCOLLECT_NORMAL
     elseif ActionQueuer.auto_collect == true then
-        auto_collect_CN = "启用"
+        auto_collect_lang = STRINGS.AQ_TRUE
     else
-        auto_collect_CN = "禁用"
+        auto_collect_lang = STRINGS.AQ_FALSE
     end
-    --记得下面这个
-    --local auto_collect_CN = ActionQueuer.auto_collect == true and "启用" or "禁用"
-    ThePlayer.components.talker:Say("自动拾取: " .. auto_collect_CN)
-end)
 
+    ThePlayer.components.talker:Say(STRINGS.AQ_AUTOCOLLECT..auto_collect_lang)
+end)
 
 TheInput:AddKeyUpHandler(GetKeyFromConfig("endless_deploy_key"), function()
     if not InGame() then return end
     ActionQueuer.endless_deploy = not ActionQueuer.endless_deploy
-    local endless_deploy_CN = ActionQueuer.endless_deploy == true and "启用" or "禁用"
-    ThePlayer.components.talker:Say("无尽部署: " .. endless_deploy_CN)
+    local endless_deploy_lang = ActionQueuer.endless_deploy == true and STRINGS.AQ_TRUE or STRINGS.AQ_FALSE
+    ThePlayer.components.talker:Say(STRINGS.AQ_ENDLESSDEPLOY..endless_deploy_lang)
 end)
 
 local last_recipe, last_skin
 TheInput:AddKeyUpHandler(GetKeyFromConfig("last_recipe_key"), function()
     if not InGame() then return end
     if not last_recipe then
-        ThePlayer.components.talker:Say("未找到上次制作的配方")
+        ThePlayer.components.talker:Say(STRINGS.AQ_NORECIPEFOUND)
         return
     end
     local last_recipe_name = STRINGS.NAMES[last_recipe.name:upper()] or "UNKNOWN"
     local builder = ThePlayer.replica.builder
     if not builder:CanBuild(last_recipe.name) and not builder:IsBuildBuffered(last_recipe.name) then
-        ThePlayer.components.talker:Say("无法制作: " .. last_recipe_name)
+        ThePlayer.components.talker:Say(STRINGS.AQ_UNABLECRAFT..last_recipe_name)
         return
     end
     if last_recipe.placer then
@@ -136,7 +142,7 @@ TheInput:AddKeyUpHandler(GetKeyFromConfig("last_recipe_key"), function()
     else
         builder:MakeRecipeFromMenu(last_recipe, last_skin)
     end
-    ThePlayer.components.talker:Say("制作最后一次的配方:" .. last_recipe_name)
+    ThePlayer.components.talker:Say(STRINGS.AQ_CRAFTLAST..last_recipe_name)
 end)
 
 local function ActionQueuerInit()
@@ -175,7 +181,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
                 if TheInput:IsAqModifierDown(action_queue_key) then
                     local target = TheInput:GetWorldEntityUnderMouse()
                     if target and target:HasTag("fishable") and not inst.replica.rider:IsRiding()
-                        and inst.replica.inventory:EquipHasTag("fishingrod") then
+                      and inst.replica.inventory:EquipHasTag("fishingrod") then
                         ActionQueuer:StartAutoFisher(target)
                     elseif not ActionQueuer.auto_fishing then
                         ActionQueuer:OnDown(mouse_control)
@@ -188,7 +194,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
         end
         PlayerControllerOnControl(self, control, down)
         if down and ActionQueuer.action_thread and not ActionQueuer.selection_thread and InGame()
-            and (interrupt_controls[control] or mouse_control ~= nil and not TheInput:GetHUDEntityUnderMouse()) then
+          and (interrupt_controls[control] or mouse_control ~= nil and not TheInput:GetHUDEntityUnderMouse()) then
             ActionQueuer:ClearActionThread()
             if always_clear_queue or control == CONTROL_ACTION then
                 ActionQueuer:ClearSelectedEntities()
@@ -198,7 +204,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
     local PlayerControllerIsControlPressed = self.IsControlPressed
     self.IsControlPressed = function(self, control)
         if control == CONTROL_FORCE_INSPECT and ActionQueuer.action_thread then return false end
-
+        
         -- 201220 null: fix for EAT on self
         if use_control and control == CONTROL_FORCE_TRADE and
            ThePlayer.components.playeravatardata.inst.replica.inventory:GetActiveItem() ~= nil then return false end
@@ -212,7 +218,7 @@ AddClassPostConstruct("components/builder_replica", function(self)
     self.MakeRecipeFromMenu = function(self, recipe, skin)
         last_recipe, last_skin = recipe, skin
         if not ActionQueuer.action_thread and TheInput:IsAqModifierDown(action_queue_key)
-            and not recipe.placer and self:CanBuild(recipe.name) then
+          and not recipe.placer and self:CanBuild(recipe.name) then
             ActionQueuer:RepeatRecipe(self, recipe, skin)
         else
             BuilderReplicaMakeRecipeFromMenu(self, recipe, skin)

@@ -1,0 +1,19 @@
+local STRINGS = GLOBAL.STRINGS
+
+STRINGS.AQ_AUTOCOLLECT = "Auto Collect : "
+
+STRINGS.AQ_AUTOCOLLECT_CHOP = "Chop mod"
+
+STRINGS.AQ_AUTOCOLLECT_NORMAL = "Normal"
+
+STRINGS.AQ_ENDLESSDEPLOY = "Endless deploy : "
+
+STRINGS.AQ_NORECIPEFOUND = "No previous recipe found"
+
+STRINGS.AQ_UNABLECRAFT = "Unable to craft : "
+
+STRINGS.AQ_CRAFTLAST = "Crafting last recipe : "
+
+STRINGS.AQ_TRUE = "True"
+
+STRINGS.AQ_FALSE = "False"
