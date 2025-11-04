@@ -8,7 +8,7 @@ GLOBAL.setmetatable(env, {
 local function Import(modulename)
 	local f = GLOBAL.kleiloadlua(modulename)
 	if f and type(f) == "function" then
-        setfenv(f, env.env) -- 本模组本体环境
+        setfenv(f, GLOBAL)
         return f()
 	end
 end
