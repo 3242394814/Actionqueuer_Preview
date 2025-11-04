@@ -14,13 +14,13 @@ end
 local function Import(modulename)
 	local f = GLOBAL.kleiloadlua(modulename)
 	if f and type(f) == "function" then
-        setfenv(f, env.env) -- 本模组本体环境
+        setfenv(f, GLOBAL)
         return f()
 	end
 end
 
 local Upvaluehelper = Import(MODROOT .. "scripts/utils/bbgoat_upvaluehelper.lua")
-local AQ_ActionQueuer
+local _ActionQueuer
 
 local MOD_util = require("utils/MOD_util")
 
@@ -34,6 +34,8 @@ local easy_stack
 local mouse_controls
 local default_aq_queuekey
 local IsHUDEntity -- HUD
+
+local last_Width_Height_String = ""
 
 -- 兼容几何布局
 local gp_mod = KnownModIndex:IsModEnabledAny("workshop-351325790")
@@ -470,7 +472,7 @@ function ActionQueuer:SetPreview(rightclick)
     -- 初始位置, 最终位置, 间隔，上限-》预览
 
     -- 萌萌的新的版本不能判断selected_ents，先删了
-    -- if next(AQ_ActionQueuer.selected_ents) then
+    -- if next(_ActionQueuer.selected_ents) then
     --     return ActionQueuer:ClearPreview()
     -- end
     if rightclick then
@@ -588,6 +590,11 @@ function ActionQueuer:SetPreview(rightclick)
             end
         end
     elseif self.inst.components.playercontroller.placer then
+        local Blacklist = {
+            meatrack_placer = true, -- 晾肉架。无语，萌萌的新的版本预测的不准确，乱放，还TM不修
+        }
+        if self.inst.components.playercontroller.placer.prefab and Blacklist[self.inst.components.playercontroller.placer.prefab] then return end
+
         local playercontroller = self.inst.components.playercontroller
         local recipe = playercontroller.placer_recipe
         local spacing = recipe.min_spacing > 2 and 4 or 2
@@ -660,22 +667,22 @@ AddComponentPostInit("playercontroller", function(self, inst)
         ActionQueuer.queued_preview_movement = true
     end)
 
-    AQ_ActionQueuer = Upvaluehelper.GetUpvalue(self.OnControl,"ActionQueuer")
-    farm_spacing = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"farm_spacing")
-    farm3x3_offset = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"farm3x3_offset")
-    GetHeadingDir = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetHeadingDir")
+    _ActionQueuer = Upvaluehelper.GetUpvalue(self.OnControl,"ActionQueuer")
+    farm_spacing = Upvaluehelper.GetUpvalue(_ActionQueuer.OnUp,"farm_spacing")
+    farm3x3_offset = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"farm3x3_offset")
+    GetHeadingDir = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetHeadingDir")
     double_snake = true -- 萌萌的新写的
-    GetAccessibleTilePosition = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
-    easy_stack = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnUp,"easy_stack")
+    GetAccessibleTilePosition = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
+    easy_stack = Upvaluehelper.GetUpvalue(_ActionQueuer.OnUp,"easy_stack")
     mouse_controls = { [CONTROL_PRIMARY] = false, [CONTROL_SECONDARY] = true } -- Upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls") -- 2个都是true 什么情况
     default_aq_queuekey = Upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
-    IsHUDEntity = Upvaluehelper.GetUpvalue(AQ_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
+    IsHUDEntity = Upvaluehelper.GetUpvalue(_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
-    ActionQueuer.userid = AQ_ActionQueuer.inst.userid -- 自己的id
+    ActionQueuer.userid = _ActionQueuer.inst.userid -- 自己的id
 
     GLOBAL.setmetatable(ActionQueuer, {
         __index = function(t, k)
-            return GLOBAL.rawget(AQ_ActionQueuer, k)
+            return GLOBAL.rawget(_ActionQueuer, k)
         end
     })
 
@@ -697,20 +704,20 @@ AddComponentPostInit("playercontroller", function(self, inst)
         return PlayerControllerOnControl(self, control, down) -- 该干啥干啥
     end
 
-    local old_ActionQueuer_ClearSelectedEntities = AQ_ActionQueuer.ClearSelectedEntities
-    AQ_ActionQueuer.ClearSelectedEntities = function(...)
+    local old_ActionQueuer_ClearSelectedEntities = _ActionQueuer.ClearSelectedEntities
+    _ActionQueuer.ClearSelectedEntities = function(...)
         ActionQueuer:ClearPreview()
         old_ActionQueuer_ClearSelectedEntities(...)
     end
 
-    local old_ActionQueuer_ClearActionThread = AQ_ActionQueuer.ClearActionThread
-    AQ_ActionQueuer.ClearActionThread = function(...)
+    local old_ActionQueuer_ClearActionThread = _ActionQueuer.ClearActionThread
+    _ActionQueuer.ClearActionThread = function(...)
         ActionQueuer:ClearPreview()
         old_ActionQueuer_ClearActionThread(...)
     end
 
     -- 还得是覆盖法...
-    function AQ_ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
+    function _ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
         if not self.TL then return end
         self:MovementPredict()
         -- 210116 null: cases for snapping positions to farm grid (Tilling, Wormwood planting on soil tiles, etc)
