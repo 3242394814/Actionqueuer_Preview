@@ -49,7 +49,7 @@ local function isPointInSide(point, poss) --poss is {vector3,vector3,vector3,vec
     end
     return inside
 end
-
+local farm_spacing = 4 / 3
 --selectitemfn_force 用到的
 local ticketprefabs = { 'trinket', 'winter_', 'halloween', '_seeds' }
 --寻找身上物品的函数
@@ -180,6 +180,7 @@ local function returnfunction()
     end
     SendRPCToServer(RPC.ReturnActiveItem)
 end
+local fn_list = {}
 local itemcomponents = {}
 local posaction_postab = {} --储存位置坐标，对于无实体的动作
 local allowed_actions = {
@@ -934,7 +935,7 @@ local allowed_actions = {
         end,
         sleeptime = 0.1,
     },
-    ['MEDALPOLLUTE'] = {                           --勋章黑化血糖
+	['MEDALPOLLUTE'] = {                  --勋章黑化血糖
         rpc = function(act)
             if not IsBusy() or act.time < 0.1 then --因为目标会瞬移所以不能一直发
                 act.self:SendControllerRPCSafely(ACTIONS.MEDALPOLLUTE.code, act.item,
@@ -1108,7 +1109,7 @@ local allowed_actions = {
                     elseif v == 'TERRAFORM' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) == 4 then
                         posaction_postab[k] = nil
                     elseif v == 'TERRAFORM' then
-                        local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
                         if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                             mindistsq = curdistsq
                             target = k
@@ -1149,16 +1150,16 @@ local allowed_actions = {
             if math.abs(pos.x - tilecenter.x) < 2 / 3 then
                 x = tilecenter.x
             elseif pos.x > tilecenter.x then
-                x = tilecenter.x + 4 / 3
+				x = tilecenter.x + farm_spacing
             else
-                x = tilecenter.x - 4 / 3
+				x = tilecenter.x - farm_spacing
             end
             if math.abs(pos.z - tilecenter.z) < 2 / 3 then
                 z = tilecenter.z
             elseif pos.z > tilecenter.z then
-                z = tilecenter.z + 4 / 3
+				z = tilecenter.z + farm_spacing
             else
-                z = tilecenter.z - 4 / 3
+				z = tilecenter.z - farm_spacing
             end
             return Vector3(x, 0, z)
         end,
@@ -1181,14 +1182,14 @@ local allowed_actions = {
                 --act.self.posaction
                 for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
                     local select = true
-                    for _, ent in pairs(TheSim:FindEntities(x + v[1] * (4 / 3), 0, z + v[2] * (4 / 3), 0.2, { "soil" })) do
+					for _, ent in pairs(TheSim:FindEntities(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing, 0.2, { "soil" })) do
                         if not ent:HasTag("NOCLICK") then
                             select = false
                             break
                         end
                     end
-                    if select and TheWorld.Map:GetTileAtPoint(x + v[1] * (4 / 3), 0, z + v[2] * (4 / 3)) == ground then
-                        act.target.Transform:SetPosition(x + v[1] * (4 / 3), 0, z + v[2] * (4 / 3))
+					if select and TheWorld.Map:GetTileAtPoint(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing) == ground then
+						act.target.Transform:SetPosition(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing)
                         act.self:SelectEntity(act.target, 'TILL', nil, nil, true)
                         return
                     end
@@ -1202,7 +1203,7 @@ local allowed_actions = {
                         or math.abs(k.x - x) + math.abs(k.z - z) < 0.01 then --筛选出已经挖过的
                         posaction_postab[k] = nil
                     elseif v == 'TILL' and act.self:GetAction(nil, 'TILL', true, nil, k) then
-                        local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
                         if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                             mindistsq = curdistsq
                             target = k
@@ -1277,7 +1278,7 @@ local allowed_actions = {
                     elseif v == 'POUR_WATER_GROUNDTILE' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) ~= 47 then
                         posaction_postab[k] = nil
                     elseif v == 'POUR_WATER_GROUNDTILE' then
-                        local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
                         if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                             mindistsq = curdistsq
                             target = k
@@ -1306,6 +1307,17 @@ local allowed_actions = {
             if moisture.AnimState:GetCurrentAnimationTime() >= 0.9 then
                 return true
             end
+        end,
+        tool = function(item)
+            --wateryprotection
+            if not item or not ActionQueuer:HasActionComponent(item, "wateryprotection") then return end
+            local i = 100
+            local classified = item and item.replica and item.replica.inventoryitem and
+                item.replica.inventoryitem.classified
+            if classified and classified.percentused then
+                i = classified.percentused:value()
+            end
+            return i ~= 0
         end,
     },
     ['DEPLOY'] = {
@@ -1336,7 +1348,7 @@ local allowed_actions = {
                         elseif v == 'DEPLOY' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) ~= 4 then
                             posaction_postab[k] = nil
                         elseif v == 'DEPLOY' then
-                            local curdistsq = distsq(k, player_pos)        -- 点距
+							local curdistsq = distsq(k, player_pos) -- 点距
                             if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                                 mindistsq = curdistsq
                                 target = k
@@ -1358,7 +1370,7 @@ local allowed_actions = {
                     if k.x == x and k.z == z or math.abs(k.x - x) + math.abs(k.z - z) < 0.01 then
                         posaction_postab[k] = nil
                     elseif v == 'DEPLOY' then
-                        local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
                         if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                             mindistsq = curdistsq
                             target = k
@@ -1451,7 +1463,7 @@ local allowed_actions = {
         rpc = function(act)
             local hand = INV_util:GetHandsEquip()
             if hand and hand:HasTag('veryquickcast') then --扫把
-                if act.time < 0.1 or act.time > 0.4 then  --最有操作的一集
+				if act.time < 0.1 or act.time > 0.4 then --最有操作的一集
                     SendRPCToServer(RPC.LeftClick, ACTIONS.CASTSPELL.code, act.target:GetPosition().x,
                         act.target:GetPosition().z,
                         act.target, nil, nil, ACTIONS.CASTSPELL.canforce, ACTIONS.CASTSPELL.mod_name)
@@ -1905,6 +1917,9 @@ local allowed_actions = {
         controllertable = { needreturnactiveitem = true },
     }
 }
+if _G.rawget(_G, 'REFORGED_SETTINGS') then
+    allowed_actions.ATTACK = nil
+end
 --OPEN_CRAFTING
 for k, v in pairs({ "PLANTREGISTRY_RESEARCH",
     "RESETMINE", "TURNON", "TURNOFF", "UNWRAP",
@@ -1979,8 +1994,9 @@ MOD_util:DoTaskInTime(0, addallactions)
 -- Shift右键粘贴 【蜘蛛巢已经不能种在蜘蛛巢上了，排队论过时啦】
 local easy_stack = { minisign_item = "structure", minisign_drawn = "structure", spidereggsack = "spiderden" }
 -- 部署间隔
+
 local deploy_spacing = { wall = 1, fence = 1, trap = 1.5, mine = 2, turf = 4, moonbutterfly = 4 }
-local action_spacing = { TILL = 4 / 3, TERRAFORM = 4, DROP = 1, POUR_WATER_GROUNDTILE = 4, DEPLOY_TILEARRIVE = 4, DEPLOY = 2 }
+local action_spacing = { TILL = farm_spacing, TERRAFORM = 4, DROP = 1, POUR_WATER_GROUNDTILE = 4, DEPLOY_TILEARRIVE = 4, DEPLOY = 2 }
 -- 类似特效、无法点击的、玩家等不能被选中
 local unselectable_tags = { "DECOR", "FX", "INLIMBO", --[[  "NOCLICK", ]] "player" }
 
@@ -1988,7 +2004,6 @@ local offsets = {}
 for i, offset in pairs({ { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 }, { 1, -1 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 } }) do
     offsets[i] = Point(offset[1] * 1.5, 0, offset[2] * 1.5)
 end
-local farm_spacing = 4 / 3
 local farm3x3_offset = farm_spacing / 2
 local double_snake = true
 --框选相关
@@ -2252,7 +2267,7 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
     local activeitem = INV_util:GetActiveItem()
     --print(activeitem, mouse_item)
     if mouse_item and (not activeitem or activeitem ~= mouse_item) then --这里有时候进不来？？
-        local a = canusecontroller(pos, mouse_item, target, actionid)   --byd
+		local a = canusecontroller(pos, mouse_item, target, actionid) --byd
         author_print('return3:', mouse_item)
         return a,
             a and a.action and a.action.id and allowed_actions[a.action.id] or
@@ -2271,10 +2286,10 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
     local lmb, rmb = playeractionpicker:DoGetMouseActions(pos, target)
     --author_print(target, lmb, rmb)
     if rightclick ~= false then --这里是排队论选择的时候左键或者右键
-        if rmb then             --必须在allowed_actions这个表里面的动作
+		if rmb then          --必须在allowed_actions这个表里面的动作
             local rmbacttab = allowed_actions[rmb.action.id]
             if rmbacttab and ENT_util:FnOrNum(rmbacttab.isleftclick, target) ~= true then
-                if not actionid or actionid == rmb.action.id then                        --actionid为传入的动作id，必须是没传入或者传入的和获取的相同
+				if not actionid or actionid == rmb.action.id then         --actionid为传入的动作id，必须是没传入或者传入的和获取的相同
                     if not rmbacttab.canselect or rmbacttab.canselect(target, self) then --canselect没有或者满足这个函数才能选择
                         return rmb, rmbacttab
                     end
@@ -2431,8 +2446,8 @@ end
 
 -- 框选器(是否右键)
 function ActionQueuer:SelectionBox(rightclick)
-    local previous_ents = {}                              -- 先前的实体表
-    local started_selection = false                       -- 开始选择标志位
+	local previous_ents = {}                           -- 先前的实体表
+	local started_selection = false                    -- 开始选择标志位
     local start_x, start_y = self.screen_x, self.screen_y -- 开始选择的位置
     local start_pos = GetWorldPosition(start_x, start_y)
     self.update_selection = function()
@@ -2457,14 +2472,14 @@ function ActionQueuer:SelectionBox(rightclick)
             GetWorldPosition(xmax, ymax), GetWorldPosition(xmax, ymin)
         local center = GetWorldPosition((xmin + xmax) / 2, (ymin + ymax) / 2) -- 窗口实际在世界的位置
         local range = math.sqrt(math.max(center:DistSq(self.TL), center:DistSq(self.BL), center:DistSq(self.TR),
-            center:DistSq(self.BR)))                                          -- 两点间的距离公式
+			center:DistSq(self.BR)))                                    -- 两点间的距离公式
         local current_ents = {}
         for _, v in pairs(TheSim:FindEntities(center.x, 0, center.z, range, nil, unselectable_tags)) do
             local ent = v and v.client_forward_target or v
             if ENT_util:IsValid(ent) then
                 local pos = ent:GetPosition()
                 if pos and isPointInSide(pos, { self.TL, self.TR, self.BR, self.BL }) then -- 实体位置在框选范围内
-                    if not self:IsSelectedEntity(ent) and not previous_ents[ent] then      -- 不是已选实体 且 不在之前的实体表中
+					if not self:IsSelectedEntity(ent) and not previous_ents[ent] then -- 不是已选实体 且 不在之前的实体表中
                         local act, acttab = self:GetAction(ent, nil, rightclick)
                         if act and acttab and not ENT_util:FnOrNum(acttab.dontselectbyselectbox, ent, rightclick) then
                             self:SelectEntity(ent, act.action.id, nil, nil, rightclick)
@@ -2475,7 +2490,7 @@ function ActionQueuer:SelectionBox(rightclick)
             end
         end
         for ent in pairs(previous_ents) do -- 遍历之前的实体表
-            if not current_ents[ent] then  -- 如果之前的表中没有现在的量，则取消选中
+			if not current_ents[ent] then -- 如果之前的表中没有现在的量，则取消选中
                 self:DeselectEntity(ent)
             end
         end
@@ -2649,9 +2664,9 @@ function ActionQueuer:CherryPick(rightclick)
         local ent = v and v.client_forward_target or v
         if ENT_util:IsValid(ent) then
             --这说明鼠标下吗有实体动作吗，那么就不会执行我的记录位置的动作pos_point_act
-            local act = self:GetAction(ent, nil, rightclick)     -- 但是Cherrypick是多次执行,第一次执行会给给这次点击赋值一个表,存入相关信息,第二次时间差满足才进入双击流程
+			local act = self:GetAction(ent, nil, rightclick) -- 但是Cherrypick是多次执行,第一次执行会给给这次点击赋值一个表,存入相关信息,第二次时间差满足才进入双击流程
             if act then
-                flag = false                                     -- 鼠标下的实体如果有合法的动作
+				flag = false                         -- 鼠标下的实体如果有合法的动作
                 self:ToggleEntitySelection(ent, act, rightclick) -- 切换实体选择状态
 
                 -- -- Original CherryPick code
@@ -2686,9 +2701,9 @@ function ActionQueuer:CherryPick(rightclick)
         self.posaction:AddTag("NOCLICK")
         posaction_postab = {}
     end
-    if flag == true then                                 --鼠标下无实体动作，进入记录位置动作流程pos_point_act
+	if flag == true then                           --鼠标下无实体动作，进入记录位置动作流程pos_point_act
         local ent = TheInput:GetWorldEntityUnderMouse()
-        self.posaction.ent = ent                         --记录位置动作下的实体
+		self.posaction.ent = ent                   --记录位置动作下的实体
         local act = self:GetAction(nil, nil, rightclick) --记录动作
         if act and act.action.id and allowed_actions[act.action.id] and allowed_actions[act.action.id].isposaction then
             local pos = ent and ent:GetPosition() or TheInput:GetWorldPosition()
@@ -2759,12 +2774,12 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
     if self.clicked then
         self.clicked = false
         if not self.action_thread then
-            if self:IsWalkButtonDown() then      -- 按下移动键打断
+			if self:IsWalkButtonDown() then -- 按下移动键打断
                 self:ClearSelectedEntities()
             elseif next(self.selected_ents) then -- 有选择的实体
                 self:MovementPredict()
-                self:ApplyToSelection()          -- 选择器执行
-            elseif rightclick then               -- 未选择实体实体时进入部署流程
+				self:ApplyToSelection() -- 选择器执行
+			elseif rightclick then      -- 未选择实体实体时进入部署流程
                 local active_item = INV_util:GetActiveItem()
                 if active_item then
                     if easy_stack[active_item.prefab] then -- 种植小木牌的
@@ -2781,11 +2796,11 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
                         if not self.TL then return end
                         local cx, cz = (self.TL.x + self.BR.x) / 2,
                             (self.TR.z + self.BL.z) /
-                            2                                                                            -- Get SelectionBox() center coords
-                        if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then            -- if center = soil tile
+							2                                                       -- Get SelectionBox() center coords
+						if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then -- if center = soil tile
                             self:DeployToSelection(self.WormwoodPlantAtPoint, farm_spacing, active_item) -- Snap to farm grid
                         else
-                            self:DeployToSelection(self.DeployActiveItem, farm_spacing, active_item)     -- Plant normally
+							self:DeployToSelection(self.DeployActiveItem, farm_spacing, active_item) -- Plant normally
                         end
                         return
                     end
@@ -2811,7 +2826,7 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
                 local rotation = playercontroller.placer:GetRotation()
                 local skin = playercontroller.placer_recipe_skin
                 local builder = self.inst.replica.builder
-                local spacing = recipe.min_spacing or 2
+				local spacing = recipe.min_spacing or 3.2
                 self:DeployToSelection(function(self, pos, item)
                     if not builder:IsBuildBuffered(recipe.name) then
                         if not builder:CanBuild(recipe.name) then return false end
@@ -2906,7 +2921,7 @@ function ActionQueuer:TillAtPoint(pos, item)
     if not INV_util:GetHandsEquip() then return false end
     if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- 201221 null: Fix for when objects block Tilling
         local act = BufferedAction(self.inst, nil, ACTIONS.TILL, item, pos)
-        self:SendActionAndWait(act, false)           -- false = RPC.LeftClick, avoids Geometric Placement mod's RPC.RightClick snap overrides
+		self:SendActionAndWait(act, false)        -- false = RPC.LeftClick, avoids Geometric Placement mod's RPC.RightClick snap overrides
     end
     return true
 end
@@ -2918,7 +2933,7 @@ function ActionQueuer:WormwoodPlantAtPoint(pos, item)
     if not INV_util:GetActiveItem() then return false end
     if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- Do not plant outside the farm soil tile in this scenario
         local act = BufferedAction(self.inst, nil, ACTIONS.DEPLOY, item, pos)
-        self:SendActionAndWait(act, false)           -- 210127 null: false avoids Geometric Placement mod's RPC.RightClick snap overrides
+		self:SendActionAndWait(act, false)        -- 210127 null: false avoids Geometric Placement mod's RPC.RightClick snap overrides
     end
     return true
 end
@@ -2944,10 +2959,10 @@ end
 function ActionQueuer:GetClosestTarget()
     local mindistsq, target
     local player_pos = self.inst:GetPosition()
-    for ent in pairs(self.selected_ents) do                        -- 遍历已选实体
+	for ent in pairs(self.selected_ents) do               -- 遍历已选实体
         if ENT_util:IsValid(ent) then
             local curdistsq = player_pos:DistSq(ent:GetPosition()) -- 点距
-            if not mindistsq or curdistsq < mindistsq then         -- 哪个点距小记录哪个
+			if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
                 mindistsq = curdistsq
                 target = ent
             end
@@ -3332,9 +3347,9 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
     elseif snap_farm then
         -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
         local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-        if tilecenter.x % 4 == 0 then                                                        -- if center of tile is divisible by 4, then it's a medium/huge server
+		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
             farm3x3_offset =
-                farm_spacing                                                                 -- adjust offset for medium/huge servers for 3x3 grid
+				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
         end
         start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
             math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
@@ -3482,9 +3497,9 @@ function ActionQueuer:selectallpos(actid, spacing, item)
     elseif actid == 'TILL' then
         -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
         local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-        if tilecenter.x % 4 == 0 then                                                        -- if center of tile is divisible by 4, then it's a medium/huge server
+		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
             farm3x3_offset =
-                farm_spacing                                                                 -- adjust offset for medium/huge servers for 3x3 grid
+				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
         end
         start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
             math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
@@ -4046,7 +4061,8 @@ AddClassPostConstruct("widgets/invslot", function(self)
         local inventory = character and character.replica.inventory or nil
         local container = self.container
         local container_item = container and container:GetItemInSlot(slot_number) or nil
-        if GetTime() - lasttrade.time < 0.5 and slot_number == lasttrade.slot and lasttrade.container == container then
+		if GetTime() - lasttrade.time < 0.5 and slot_number == lasttrade.slot and lasttrade.container == container
+			and TheInput:IsControlPressed(CONTROL_FORCE_ATTACK) then
             --k.prefab == 'cookpot'
             local replica = container.inst and container.inst.replica
             local a = replica and replica.container or
