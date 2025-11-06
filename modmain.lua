@@ -590,14 +590,13 @@ function ActionQueuer:SetPreview(rightclick)
             end
         end
     elseif self.inst.components.playercontroller.placer then
-        local Blacklist = {
-            meatrack_placer = true, -- 晾肉架。无语，萌萌的新的版本预测的不准确，乱放，还TM不修
-        }
-        if self.inst.components.playercontroller.placer.prefab and Blacklist[self.inst.components.playercontroller.placer.prefab] then return end
+        -- local Blacklist = {
+        -- }
+        -- if self.inst.components.playercontroller.placer.prefab and Blacklist[self.inst.components.playercontroller.placer.prefab] then return end
 
         local playercontroller = self.inst.components.playercontroller
         local recipe = playercontroller.placer_recipe
-        local spacing = recipe.min_spacing > 2 and 4 or 2
+        local spacing = recipe.min_spacing or 3.2
         local placer = playercontroller.placer
         return self:DeployToPreview({
             prefab = placer.prefab,
