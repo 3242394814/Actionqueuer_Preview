@@ -1,5 +1,3 @@
----@diagnostic disable: need-check-nil
---设置为全局环境 就不用一个个GLOBAL的写
 GLOBAL.setmetatable(env, {
     __index = function(t, k)
         return GLOBAL.rawget(GLOBAL, k)
@@ -58,9 +56,9 @@ else
     print("[行为学预览] 未检测到几何布局模组开启")
 end
 
-local ActionQueuer = {}
+local ActionQueuerPreview = {}
 
-function ActionQueuer:SelectionBox(rightclick)
+function ActionQueuerPreview:SelectionBox(rightclick)
     self.update_selection = function()
         self:SetPreview(rightclick)
     end
@@ -101,7 +99,7 @@ function GetActiveItem(prefab)
     return table.contains(prefabs, item.prefab) and item
 end
 
-function ActionQueuer:GetEquippedItemInHand()
+function ActionQueuerPreview:GetEquippedItemInHand()
     return self.inst.replica.inventory:GetEquippedItem(EQUIPSLOTS.HANDS)
 end
 
@@ -192,11 +190,11 @@ local function GetAPrefabCount(prefab)
     return count
 end
 
-function ActionQueuer:GetActiveItem()
+function ActionQueuerPreview:GetActiveItem()
     return self.inst.replica.inventory:GetActiveItem()
 end
 
-function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
+function ActionQueuerPreview:GetStartValue(spacing, snap_farm, tile_or_wall)
     if not self.TL then
         return
     end
@@ -262,7 +260,7 @@ function ActionQueuer:GetStartValue(spacing, snap_farm, tile_or_wall)
         row_swap, step, countz2, countStep
 end
 
-function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta, compat_gp_mod)
+function ActionQueuerPreview:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta, compat_gp_mod)
     local ent = meta.ent
     local func = meta.func_pos
     local ret = {}
@@ -407,7 +405,7 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
     return ret
 end
 
-function ActionQueuer:SpawnPreview(pos, meta)
+function ActionQueuerPreview:SpawnPreview(pos, meta)
     if not self.preview_able then
         return
     end
@@ -453,7 +451,7 @@ function ActionQueuer:SpawnPreview(pos, meta)
     end
 end
 
-function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize, compat_gp_mod)
+function ActionQueuerPreview:DeployToPreview(meta, spacing, snap, tow, istill, maxsize, compat_gp_mod)
     local ret = self:GetPosList(spacing, snap, tow, istill, maxsize, meta, compat_gp_mod)
 
     for id, pos in pairs(ret or {}) do
@@ -468,7 +466,7 @@ function ActionQueuer:DeployToPreview(meta, spacing, snap, tow, istill, maxsize,
     end
 end
 
-function ActionQueuer:SetPreview(rightclick)
+function ActionQueuerPreview:SetPreview(rightclick)
     -- 初始位置, 最终位置, 间隔，上限-》预览
 
     -- 萌萌的新的版本不能判断selected_ents，先删了
@@ -488,13 +486,13 @@ function ActionQueuer:SetPreview(rightclick)
 
         if active_item then
             if Blacklist[active_item.prefab] then -- 黑名单物品
-                return ActionQueuer:ClearPreview()
+                return ActionQueuerPreview:ClearPreview()
             end
 
             if easy_stack[active_item.prefab] then -- 种植小木牌的
                 local ent = TheInput:GetWorldEntityUnderMouse()
                 if ent and ent:HasTag(easy_stack[active_item.prefab]) then
-                    return ActionQueuer:ClearPreview()
+                    return ActionQueuerPreview:ClearPreview()
                 end
             end
 
@@ -607,7 +605,7 @@ function ActionQueuer:SetPreview(rightclick)
     end
 end
 
-function ActionQueuer:ClearPreview()
+function ActionQueuerPreview:ClearPreview()
     for _, ent in pairs(self.preview_curs or {}) do
         if type(ent) == "table" and ent.entity and ent:IsValid() and ent.Transform then
             ent:Remove()
@@ -618,7 +616,7 @@ function ActionQueuer:ClearPreview()
 end
 
 
-function ActionQueuer:RemovePreview(pos)
+function ActionQueuerPreview:RemovePreview(pos)
     -- 预览相关
     local id = tostring(pos)
     self.preview_eds[id] = true
@@ -632,7 +630,7 @@ end
 ----------------------------------------------------------------------------------------------------------
 
 -- 清除框选(预览)线程
-function ActionQueuer:ClearSelectionPreviewThread()
+function ActionQueuerPreview:ClearSelectionPreviewThread()
     if self.selection_preview_thread then
         KillThreadsWithID(self.selection_thread.id)
         self.selection_preview_thread:SetList(nil)
@@ -640,7 +638,7 @@ function ActionQueuer:ClearSelectionPreviewThread()
     end
 end
 
-function ActionQueuer:OnDown(rightclick) -- 按下
+function ActionQueuerPreview:OnDown(rightclick) -- 按下
     self:ClearSelectionPreviewThread() -- 清除旧框选线程
     if self.inst:IsValid() and not IsHUDEntity() then
         self:SelectionBox(rightclick)
@@ -651,35 +649,35 @@ end
 AddComponentPostInit("playercontroller", function(self, inst)
     if inst ~= ThePlayer then return end
 
-    ActionQueuer.inst = inst
+    ActionQueuerPreview.inst = inst
     -- 本模组设置/魔改部分
-    ActionQueuer.preview_able = MOD_util:GetMOption("preview_able", true) -- 预览功能总开关
-    ActionQueuer.preview_curs = {} -- 当前:存实体
-    ActionQueuer.preview_eds = {} -- 已种：存true
-    ActionQueuer.preview_highlight = MOD_util:GetMOption("preview_highlight", 0.3)
-    ActionQueuer.preview_max = MOD_util:GetMOption("preview_max", 80) -- 预览最大数量
-    ActionQueuer.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", "GREEN")] -- 颜色
-    ActionQueuer.preview_dont_color = MOD_util:GetMOption("preview_dont_color", false) -- 不要变色
+    ActionQueuerPreview.preview_able = MOD_util:GetMOption("preview_able", true) -- 预览功能总开关
+    ActionQueuerPreview.preview_curs = {} -- 当前:存实体
+    ActionQueuerPreview.preview_eds = {} -- 已种：存true
+    ActionQueuerPreview.preview_highlight = MOD_util:GetMOption("preview_highlight", 0.3)
+    ActionQueuerPreview.preview_max = MOD_util:GetMOption("preview_max", 80) -- 预览最大数量
+    ActionQueuerPreview.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", "GREEN")] -- 颜色
+    ActionQueuerPreview.preview_dont_color = MOD_util:GetMOption("preview_dont_color", false) -- 不要变色
 
 
     TheInput:AddMoveHandler(function(x, y)
-        ActionQueuer.queued_preview_movement = true
+        ActionQueuerPreview.queued_preview_movement = true
     end)
 
     _ActionQueuer = Upvaluehelper.GetUpvalue(self.OnControl,"ActionQueuer")
     farm_spacing = Upvaluehelper.GetUpvalue(_ActionQueuer.OnUp,"farm_spacing")
     farm3x3_offset = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"farm3x3_offset")
     GetHeadingDir = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetHeadingDir")
-    double_snake = true -- 萌萌的新写的
+    double_snake = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"double_snake")
     GetAccessibleTilePosition = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
     easy_stack = Upvaluehelper.GetUpvalue(_ActionQueuer.OnUp,"easy_stack")
-    mouse_controls = { [CONTROL_PRIMARY] = false, [CONTROL_SECONDARY] = true } -- Upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls") -- 2个都是true 什么情况
+    mouse_controls = Upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls")
     default_aq_queuekey = Upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
     IsHUDEntity = Upvaluehelper.GetUpvalue(_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
-    ActionQueuer.userid = _ActionQueuer.inst.userid -- 自己的id
+    ActionQueuerPreview.userid = _ActionQueuer.inst.userid -- 自己的id
 
-    GLOBAL.setmetatable(ActionQueuer, {
+    GLOBAL.setmetatable(ActionQueuerPreview, {
         __index = function(t, k)
             return GLOBAL.rawget(_ActionQueuer, k)
         end
@@ -693,10 +691,10 @@ AddComponentPostInit("playercontroller", function(self, inst)
             if down then
                 if TheInput:IsKeyDown(MOD_util:GetMOption("aq_queuekey", default_aq_queuekey))
                     and not TheInput:IsControlPressed(CONTROL_FORCE_INSPECT) then
-                    ActionQueuer:OnDown(mouse_control)
+                    ActionQueuerPreview:OnDown(mouse_control)
                 end
             else
-                ActionQueuer:ClearSelectionPreviewThread() -- 清除框选线程
+                ActionQueuerPreview:ClearSelectionPreviewThread() -- 清除框选线程
             end
         end
 
@@ -705,13 +703,13 @@ AddComponentPostInit("playercontroller", function(self, inst)
 
     local old_ActionQueuer_ClearSelectedEntities = _ActionQueuer.ClearSelectedEntities
     _ActionQueuer.ClearSelectedEntities = function(...)
-        ActionQueuer:ClearPreview()
+        ActionQueuerPreview:ClearPreview()
         old_ActionQueuer_ClearSelectedEntities(...)
     end
 
     local old_ActionQueuer_ClearActionThread = _ActionQueuer.ClearActionThread
     _ActionQueuer.ClearActionThread = function(...)
-        ActionQueuer:ClearPreview()
+        ActionQueuerPreview:ClearPreview()
         old_ActionQueuer_ClearActionThread(...)
     end
 
@@ -882,7 +880,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
 
                 if accessible_pos then
                     if deploy_fn(self, accessible_pos, item) then
-                        ActionQueuer:RemovePreview(accessible_pos)
+                        ActionQueuerPreview:RemovePreview(accessible_pos)
                     else
                         break
                     end
@@ -915,7 +913,7 @@ MOD_util:CreatePage(pagename, {
             default = true, -- 默认选项
             options = enabledisableoption, -- 选项列表
             onapplyfn = function()
-                ActionQueuer.preview_able = MOD_util:GetMOption("preview_able", true)
+                ActionQueuerPreview.preview_able = MOD_util:GetMOption("preview_able", true)
             end
         },
         {
@@ -944,7 +942,7 @@ MOD_util:CreatePage(pagename, {
                 {text = "1000", data = 1000},
             },
             onapplyfn = function()
-                ActionQueuer.preview_max = MOD_util:GetMOption("preview_max", true)
+                ActionQueuerPreview.preview_max = MOD_util:GetMOption("preview_max", true)
             end
         },
         {
@@ -964,7 +962,7 @@ MOD_util:CreatePage(pagename, {
                 {text = "100%", data = 1},
             },
             onapplyfn = function()
-                ActionQueuer.preview_highlight = MOD_util:GetMOption("preview_highlight", true)
+                ActionQueuerPreview.preview_highlight = MOD_util:GetMOption("preview_highlight", true)
             end
         },
         {
@@ -984,7 +982,7 @@ MOD_util:CreatePage(pagename, {
                 {text = "金色", data = "GOLDENROD"},
             },
             onapplyfn = function()
-                ActionQueuer.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", true)]
+                ActionQueuerPreview.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", true)]
             end
         },
         {
@@ -996,7 +994,7 @@ MOD_util:CreatePage(pagename, {
                 {text = "否", data = false},
             },
             onapplyfn = function()
-                ActionQueuer.preview_dont_color = MOD_util:GetMOption("preview_dont_color", true)
+                ActionQueuerPreview.preview_dont_color = MOD_util:GetMOption("preview_dont_color", true)
             end
         },
     }
