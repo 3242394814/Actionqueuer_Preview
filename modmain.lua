@@ -204,9 +204,32 @@ local allowed_actions = {
         end,
         canuselantern = true,
         isleftclick = true,
+		notbreakfn = function(act)
+			local target = act.target
+			if target and target:HasTag("rock_tree") then
+				local anim = ENT_util:GetAnimation(target)
+				if anim and (anim:find('fall_pre') or anim:find("fall_miss") or anim:find("fall_bounce")) then
+					return true
+				end
+			end
+		end,
         rpc = function(act)
+			local target = act.target
+			if target and target:HasTag("rock_tree") then
+				local anim = ENT_util:GetAnimation(target)
+				if anim and (anim:find('fall_pre') or anim:find("fall_miss") or anim:find("fall_bounce")) then
+					local pos = POS_util:CalculateAimPos(ThePlayer, target, 0,
+						(target:HasTag("tree_rock1") and -3 or -4) - 0.5)
+					POS_util:GoToPoint(pos.x, pos.z)
+				else
+					SendRPCToServer(RPC.LeftClick, ACTIONS.CHOP.code, act.target:GetPosition().x,
+						act.target:GetPosition().z,
+						act.target)
+				end
+			else
                 SendRPCToServer(RPC.LeftClick, ACTIONS.CHOP.code, act.target:GetPosition().x, act.target:GetPosition().z,
                     act.target)
+			end
         end,
         tool = function(item)
             if type(item) == "string" then
