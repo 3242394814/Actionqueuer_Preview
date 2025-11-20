@@ -220,6 +220,10 @@ local allowed_actions = {
 				if anim and (anim:find('fall_pre') or anim:find("fall_miss") or anim:find("fall_bounce")) then
 					local pos = POS_util:CalculateAimPos(ThePlayer, target, 0,
 						(target:HasTag("tree_rock1") and -3 or -4) - 0.5)
+					local speeditem
+					speeditem = ActionQueuer:HasAddSpeedEquipment()
+					ActionQueuer:EquipItem(speeditem)
+					ActionQueuer.waiting_for_break = 1
 					POS_util:GoToPoint(pos.x, pos.z)
 				else
 					SendRPCToServer(RPC.LeftClick, ACTIONS.CHOP.code, act.target:GetPosition().x,
@@ -2433,8 +2437,9 @@ end
 function ActionQueuer:HasAddSpeedEquipment()
     local maxspeed, speeditem, pos, backpack
     maxspeed = 0
+	local function check(k, v)
+		if v.prefab then
     MOD_util:MasterDo(function()
-        local function check(k, v)
             local a = SpawnPrefab(v.prefab)
             local speed = a.components.equippable and a.components.equippable.walkspeedmult
             local slot = a.components.equippable and a.components.equippable.equipslot
@@ -2443,6 +2448,8 @@ function ActionQueuer:HasAddSpeedEquipment()
                 speeditem, pos = v, k
             end
             a:Remove()
+			end)
+		end
         end
         for k, v in pairs(ThePlayer.replica.inventory:GetEquips()) do
             if v:HasTag("_equippable") then
@@ -2463,7 +2470,7 @@ function ActionQueuer:HasAddSpeedEquipment()
                 end
             end
         end
-    end)
+
     return speeditem, pos, backpack
 end
 
@@ -3133,6 +3140,8 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                 end
                 --记录物品数目 后面判断dirty
                 local laststacknum = ENT_util:GetStacksize(update_item)
+
+				self.waiting_for_break = false
                 while acttab do
                     --如果被玩家删除了就退出循环
                     if not self:IsSelectedEntity(target) then
@@ -3188,7 +3197,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                         end
                     end
                     --对于需要工具的应该尝试装备工具  如何平衡加速道具和工具之间的关系？
-                    if not speedflag and acttab.tool and not acttab.tool(INV_util:GetHandsEquip(), hand_item) then
+					if not self.waiting_for_break and not speedflag and acttab.tool and not acttab.tool(INV_util:GetHandsEquip(), hand_item) then
                         work_tool = INV_util:FindInInv(nil, nil, nil, function(inst)
                             return acttab.tool(inst, hand_item)
                         end)
