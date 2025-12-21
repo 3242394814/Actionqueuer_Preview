@@ -11,7 +11,6 @@ local Image = require("widgets/image")
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
 --organ queue https://steamcommunity.com/sharedfiles/filedetails/?id=2325441848
 --默认
-local default_aq_endlessdeploymode = true
 local default_aq_selectwidget = true
 local default_aq_queuekey = KEY_LSHIFT
 local default_aq_gridkey = KEY_F3
@@ -19,6 +18,7 @@ local default_aq_recipekey = KEY_C
 local default_aq_endlesskey = KEY_F9
 local default_aq_autocollectkey = KEY_F4
 local default_aq_autocollect = GetModConfigData('autocollect') or 1
+local default_aq_endless_deploy = GetModConfigData('endless_deploy') or false
 local default_aq_selectwidget_r = 255
 local default_aq_selectwidget_g = 90
 local default_aq_selectwidget_b = 45
@@ -183,7 +183,8 @@ end
 local fn_list = {}
 local itemcomponents = {}
 local posaction_postab = {} --储存位置坐标，对于无实体的动作
-local allowed_actions = {
+local allowed_actions
+allowed_actions = {
     ["CHOP"] = {
         equipspeeditem = true,
         act_pre_fn = function(act, self)
@@ -802,13 +803,6 @@ local allowed_actions = {
             return act.self:HaveAnotherSelectedEnt(act.target, function()
                 return act.time > 25 and ThePlayer.AnimState:IsCurrentAnimation("fishing_cast") or act.time > 50
             end)
-        end,
-    },
-    GENETRANS = { --todo:dontknow what is
-        rpc = function(act)
-            SendRPCToServer(RPC.RightClick, ACTIONS.GENETRANS.code, act.target:GetPosition().x,
-                act.target:GetPosition().z,
-                act.target, nil, nil, nil, nil, ACTIONS.GENETRANS.mod_name)
         end,
     },
     MURDER = {
@@ -1790,14 +1784,14 @@ local allowed_actions = {
         controllertable = {},
     },
 
-    ['RUMMAGE'] = { --for the memory mod
+	['RUMMAGE'] = {
         --only double click
         dontselectbyselectbox = true,
         equipspeeditem = true,
         isleftclick = true,
-        canselect = function(target, self)
+		--[[canselect = function(target, self)
             return rawget(_G, 'mmdx_data')
-        end,
+		end,]]
         rpc = function(act)
             if not IsBusy() or act.time < 0.1 then
                 SendRPCToServer(RPC.LeftClick, ACTIONS.RUMMAGE.code, act.target:GetPosition().x,
@@ -1811,9 +1805,11 @@ local allowed_actions = {
                 or act.target and act.target.prefab == 'magician_chest' and
                 not act.target.AnimState:IsCurrentAnimation("closed")
         end,
+		meatrack_list = { meatrack = 1, meatrack_hermit = 1, meatrack_hermit_multi = 1, },
         reselectfn = function(act)
-            if act.target and act.target.prefab == "meatrack" then
-                for i = 1, 3 do
+			if act.target and act.target.prefab and allowed_actions.RUMMAGE.meatrack_list[act.target.prefab] then
+				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 3
+				for i = 1, num do
                     SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
                 end
             end
@@ -2098,12 +2094,12 @@ function ActionQueuer:InitFn(inst)
     -- self.color = { x = 0.5, y = 0.5, z = 0.5 }
     self.color = { x = 207 / 255, y = 61 / 255, z = 61 / 255 }
     self.deploy_on_grid = false
-    self.endless_deploy = true
+	self.endless_deploy = MOD_util:GetMOption("aq_endless_deploy", default_aq_endless_deploy) or false
     self.last_click = { time = 0 }
     self.double_click_speed = 0.3
     self.double_click_range = 20
     self.control_click_range = 20
-    self.autocollect = 1 --收集模式
+	self.autocollect = MOD_util:GetMOption("aq_autocollect", default_aq_autocollect) or 1 --收集模式
     self.posaction = nil
 end
 
@@ -3085,7 +3081,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
         local oldactive_item = INV_util:GetActiveItem()
         --储存最初始的手部物品
         local hand_item = INV_util:GetHandsEquip()
-        local lantern_mode, work_tool
+		local work_tool
         while self.inst:IsValid() do
             --获取最近的目标前先进行无尽选取
             if self.endless_repeat then
@@ -3120,11 +3116,6 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                     local returnitem = acttab.controllertable.returnfn and acttab.controllertable.returnfn() or
                         returnfunction()
                 end
-                --判断提灯砍树
-                if MOD_util:GetMOption("aq_lantern_chop", default_aq_lantern_chop) and ENT_util:FnOrNum(acttab.canuselantern, { target = target, item = update_item, time = 0, self = self })
-                    and hand_item and hand_item:HasOneOfTags({ 'light', 'fire', 'lighter', FUELTYPE.CAVE .. '_fueled', FUELTYPE.WORMLIGHT .. '_fueled' }) then
-                    lantern_mode = true
-                end
                 --在进入循环前可以执行的函数 举例：装上勋章
                 if acttab.act_pre_fn then
                     acttab.act_pre_fn({ target = target, item = update_item, time = 0, self = self }, self)
@@ -3142,6 +3133,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                 local laststacknum = ENT_util:GetStacksize(update_item)
 
 				self.waiting_for_break = false
+				self.no_act_time = nil
                 while acttab do
                     --如果被玩家删除了就退出循环
                     if not self:IsSelectedEntity(target) then
@@ -3216,7 +3208,6 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                             end, 15)
                         end --直接发rpc防止shift按住的时候无法装备
                     end
-                    --todo: 设置noact多少时间内不会退出循环
                     --没动作的目标会判断是否退出循环。满足notbreakfn的时候，即使没动作也不会退出循环
                     if not speedflag and (not acttab.notbreakfn or not acttab.notbreakfn(
                             { target = target, item = update_item, time = time, self = self, })) --有些操作暂时导致没动作，但是我不希望它退出排队论
@@ -3263,7 +3254,13 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                             end, 90)
                         end
                         --如果还是没动作就退出循环
-                        if not self:GetAction(target, act, nil, update_item) then
+						if acttab.max_noact_time then
+							self.no_act_time = (self.no_act_time or 0) + 1
+							if self.no_act_time > acttab.max_noact_time then
+								author_print('break_by_maxnoacttime')
+								break
+							end
+						elseif not self:GetAction(target, act, nil, update_item) then
                             author_print('break_by_noaction')
                             break
                         end
@@ -3275,9 +3272,6 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                             item = update_item,
                             time = time,
                             self = self,
-                            lantern_mode =
-                                lantern_mode,
-                            lighttool = hand_item,
                             tool = work_tool,
                         })
                     elseif speedflag then
@@ -4250,7 +4244,7 @@ MOD_util:AddKeyUpHandler("aq_endlesskey", default_aq_endlesskey, function()
         self.endless_repeat = true
     end
 end)
-ActionQueuer.autocollect = MOD_util:GetMOption("aq_autocollect", default_aq_autocollect)
+
 MOD_util:AddKeyUpHandler("aq_autocollectkey", default_aq_autocollectkey, function()
     if not GAME_util:InGame() then return end
 
@@ -4368,7 +4362,14 @@ if MOD_util:CanAddSetting() then
                 MapKey = true,
                 key = "aq_endlesskey",
                 default = default_aq_endlesskey,
-        }, {
+			},
+			{
+				description = "无尽部署模式",
+				key = "aq_endless_deploy",
+				default = default_aq_endless_deploy,
+				options = enabledisableoption,
+			},
+			{
             description = "默认收集模式",
             key = "aq_autocollect",
             default = default_aq_autocollect,
