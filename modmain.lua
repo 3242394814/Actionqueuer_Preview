@@ -1805,7 +1805,7 @@ allowed_actions = {
                 or act.target and act.target.prefab == 'magician_chest' and
                 not act.target.AnimState:IsCurrentAnimation("closed")
         end,
-		meatrack_list = { meatrack = 1, meatrack_hermit = 1, meatrack_hermit_multi = 1, },
+		meatrack_list = { meatrack = 1, meatrack_hermit = 1, meatrack_hermit_multi = 1, ocean_trawler = 1, },
         reselectfn = function(act)
 			if act.target and act.target.prefab and allowed_actions.RUMMAGE.meatrack_list[act.target.prefab] then
 				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 3
