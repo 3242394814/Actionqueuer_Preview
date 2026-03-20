@@ -9,18 +9,18 @@ if not KnownModIndex:IsModEnabledAny("workshop-3136701076") then
     return
 end
 
-local function Import(modulename)
+local function Import(modulename, env)
 	local f = GLOBAL.kleiloadlua(modulename)
 	if f and type(f) == "function" then
-        setfenv(f, GLOBAL)
+        setfenv(f, env or GLOBAL)
         return f()
 	end
 end
 
-local Upvaluehelper = Import(MODROOT .. "scripts/utils/bbgoat_upvaluehelper.lua")
+local Upvaluehelper = Import(MODROOT .. "bbgoat_upvaluehelper.lua")
 local _ActionQueuer
 
-local MOD_util = require("utils/MOD_util")
+local MOD_util = Import(MODROOT .. "MOD_util.lua", env)
 
 -- 基本定义（来自黑化排队论模组）
 local farm_spacing
