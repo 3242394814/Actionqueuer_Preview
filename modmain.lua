@@ -632,7 +632,9 @@ end
 -- 清除框选(预览)线程
 function ActionQueuerPreview:ClearSelectionPreviewThread()
     if self.selection_preview_thread then
-        KillThreadsWithID(self.selection_thread.id)
+        if self.selection_thread then
+            KillThreadsWithID(self.selection_thread.id)
+        end
         self.selection_preview_thread:SetList(nil)
         self.selection_preview_thread = nil
     end
