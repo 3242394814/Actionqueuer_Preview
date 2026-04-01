@@ -671,7 +671,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
     double_snake = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"double_snake")
     GetAccessibleTilePosition = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetAccessibleTilePosition")
     easy_stack = Upvaluehelper.GetUpvalue(_ActionQueuer.OnUp,"easy_stack")
-    mouse_controls = Upvaluehelper.GetUpvalue(self.OnControl,"mouse_controls")
+    mouse_controls = Upvaluehelper.FindUpvalue(self.OnControl, "mouse_controls", "workshop%-3136701076/modmain.lua")
     default_aq_queuekey = Upvaluehelper.GetUpvalue(self.OnControl,"default_aq_queuekey")
     IsHUDEntity = Upvaluehelper.GetUpvalue(_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
