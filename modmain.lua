@@ -26,6 +26,7 @@ local default_aq_selectwidget_opacity = 0.5
 local default_aq_lantern_chop = false --MOD_util:GetMOption("aq_lantern_chop", default_aq_lantern_chop)
 local default_aq_equipcane = true
 local default_aq_double_click_range = 20
+local default_aq_automaketool = true
 Assets = Assets or {}
 table.insert(Assets, Asset("ATLAS", "images/selection_square.xml"))
 table.insert(Assets, Asset("IMAGE", "images/selection_square.tex"))
@@ -3045,6 +3046,7 @@ function ActionQueuer:SelectEndlessEnt(old_mouse)
 end
 
 function ActionQueuer:MakeTool(toolfn, oldhandtool, hasclickequip)
+    if not MOD_util:GetMOption("aq_automaketool", default_aq_automaketool) then return false end
     local maketool
     for recname, rec in pairs(AllRecipes) do
         if toolfn(recname, oldhandtool) and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
@@ -4400,6 +4402,12 @@ if MOD_util:CanAddSetting() then
             key = "aq_double_click_range",
             default = default_aq_double_click_range,
         },
+            {
+                description = "自动制作工具",
+                key = "aq_automaketool",
+                options = enabledisableoption,
+                default = default_aq_automaketool,
+            }
         }
     })
 end
