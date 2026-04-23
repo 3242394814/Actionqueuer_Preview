@@ -184,6 +184,32 @@ end
 local fn_list = {}
 local itemcomponents = {}
 local posaction_postab = {} --储存位置坐标，对于无实体的动作
+local mem = {}
+local function DealWx78_spinact(act, actcode, skip)
+	if ThePlayer.GetModuleTypeCount and ThePlayer:GetModuleTypeCount("spin") > 0 then
+		mem.need_clear_controls = true
+		ThePlayer.components.playercontroller.remote_controls[CONTROL_PRIMARY] = 0
+		if not skip then
+			SendRPCToServer(RPC.LeftClick, actcode, act.target:GetPosition().x,
+				act.target:GetPosition().z,
+				act.target)
+		end
+		return true
+	end
+end
+local PlayerController = require "components/playercontroller"
+local oldIsAnyOfControlsPressed = PlayerController.IsAnyOfControlsPressed
+function PlayerController:IsAnyOfControlsPressed(...)
+	if TheWorld.ismastersim and self.handler ~= nil then
+		for i, v in ipairs({ ... }) do
+			if self.remote_controls[v] ~= nil then
+				return true
+			end
+		end
+	end
+	return oldIsAnyOfControlsPressed(self, ...)
+end
+
 local allowed_actions
 allowed_actions = {
     ["CHOP"] = {
@@ -217,6 +243,9 @@ allowed_actions = {
 		end,
         rpc = function(act)
 			local target = act.target
+			if DealWx78_spinact(act, ACTIONS.CHOP.code) then
+				return
+			end
 			if target and target:HasTag("rock_tree") then
 				local anim = ENT_util:GetAnimation(target)
 				if anim and (anim:find('fall_pre') or anim:find("fall_miss") or anim:find("fall_bounce")) then
@@ -277,6 +306,10 @@ allowed_actions = {
         canuselantern = true,
         isleftclick = true,
         rpc = function(act)
+			if DealWx78_spinact(act, ACTIONS.MINE.code) then
+				return
+			end
+
                 SendRPCToServer(RPC.LeftClick, ACTIONS.MINE.code, act.target:GetPosition().x, act.target:GetPosition().z,
                     act.target)
         end,
@@ -881,6 +914,12 @@ allowed_actions = {
         end,
         --isleftclick = true,
         rpc = function(act)
+			if DealWx78_spinact(act, ACTIONS.ATTACK.code, true) then
+				SendRPCToServer(RPC.LeftClick, ACTIONS.ATTACK.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, 10, ACTIONS.ATTACK.canforce, ACTIONS.ATTACK.mod_name)
+				return
+			end
             --[[  local handitem = INV_util:GetHandsEquip()
             if handitem and handitem.prefab == "voidcloth_boomerang" then
                 local percent = EQUIP_util:GetChargeTime(handitem)
@@ -3312,6 +3351,11 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
                     })
                 end
             end
+			if mem.need_clear_controls then
+				mem.need_clear_controls = false
+				SendRPCToServer(RPC.StopControl, CONTROL_PRIMARY)
+				SendRPCToServer(RPC.StopControl, CONTROL_ACTION)
+			end
             if deselect then
                 --删除选择实体 deselect控制是否进入这个环节，同时影响reselectfn allowautocollect
                 self:DeselectEntity(target)
@@ -3775,6 +3819,12 @@ function ActionQueuer:ClearActionThread(notclosemovement)
             self.oldmedal = nil
         end
         posaction_postab = {}
+		if mem.need_clear_controls then
+			mem.need_clear_controls = false
+			SendRPCToServer(RPC.StopControl, CONTROL_PRIMARY)
+			SendRPCToServer(RPC.StopControl, CONTROL_ACTION)
+		end
+		--[[SendRPCToServer(RPC.StopControl, CONTROL_PRIMARY)]]
     end
     --
     if authormode then
