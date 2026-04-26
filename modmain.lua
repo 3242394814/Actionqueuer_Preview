@@ -466,6 +466,15 @@ function ActionQueuerPreview:DeployToPreview(meta, spacing, snap, tow, istill, m
     end
 end
 
+-- 不预览的物品
+local Blacklist = {
+    butterfly = true, -- 蝴蝶：无法预测-预测不准确 因为花朵有大有小
+    minisign_item = true,  -- 小木牌：上级行为学Mod会乱放
+    fertilizer = true, -- 便便桶 -- 萌萌的新的版本只会怼着一个地方施肥
+    soil_amender_fermented = true, -- 超级催长剂 -- 萌萌的新的版本只会怼着一个地方施肥
+    farm_plow_item = true, -- 耕地机 -- 萌萌的新的版本不能排队放置 -- ToDo: 我的预判也不大准确 横着放会少预判一个？ 20250702
+}
+
 function ActionQueuerPreview:SetPreview(rightclick)
     -- 初始位置, 最终位置, 间隔，上限-》预览
 
@@ -475,14 +484,6 @@ function ActionQueuerPreview:SetPreview(rightclick)
     -- end
     if rightclick then
         local active_item = self:GetActiveItem()
-
-        local Blacklist = {
-            butterfly = true, -- 蝴蝶：无法预测-预测不准确 因为花朵有大有小
-            minisign_item = true,  -- 小木牌：上级行为学Mod会乱放
-            fertilizer = true, -- 便便桶 -- 萌萌的新的版本只会怼着一个地方施肥
-            soil_amender_fermented = true, -- 超级催长剂 -- 萌萌的新的版本只会怼着一个地方施肥
-            farm_plow_item = true, -- 耕地机 -- 萌萌的新的版本不能排队放置 -- ToDo: 我的预判也不大准确 横着放会少预判一个？ 20250702
-        }
 
         if active_item then
             if Blacklist[active_item.prefab] then -- 黑名单物品
@@ -678,6 +679,10 @@ AddComponentPostInit("playercontroller", function(self, inst)
     IsHUDEntity = Upvaluehelper.GetUpvalue(_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
     ActionQueuerPreview.userid = _ActionQueuer.inst.userid -- 自己的id
+
+    if TheWorld and TheWorld.ismastersim then
+        Blacklist.wortox_soul = true -- 主机环境预览灵魂等于释放灵魂
+    end
 
     GLOBAL.setmetatable(ActionQueuerPreview, {
         __index = function(t, k)
