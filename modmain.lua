@@ -13,7 +13,7 @@ local function Import(modulename)
 	end
 end
 
-local Upvaluehelper = Import(MODROOT .. "scripts/utils/bbgoat_upvaluehelper.lua")
+local Upvaluehelper = Import(MODROOT .. "bbgoat_upvaluehelper.lua")
 
 local GetAQConfigData = function(name)
     return KnownModIndex:IsModEnabledAny("workshop-3018652965") and GLOBAL.GetModConfigData(name, "workshop-3018652965") or
@@ -858,6 +858,10 @@ end
 local Blacklist = {
     butterfly = true, -- 蝴蝶：无法预测-预测不准确 因为花朵有大有小
 }
+if TheWorld and TheWorld.ismastersim then
+    Blacklist.wortox_soul = true -- 主机环境预览灵魂等于释放灵魂
+end
+
 function ActionQueuer:SetPreview(rightclick)
     -- 初始位置, 最终位置, 间隔，上限-》预览
     if next(self.selected_ents) then
