@@ -27,6 +27,7 @@ local default_aq_lantern_chop = false --MOD_util:GetMOption("aq_lantern_chop", d
 local default_aq_equipcane = true
 local default_aq_double_click_range = 20
 local default_aq_automaketool = true
+local default_dropcheck_internal = 0.5
 Assets = Assets or {}
 table.insert(Assets, Asset("ATLAS", "images/selection_square.xml"))
 table.insert(Assets, Asset("IMAGE", "images/selection_square.tex"))
@@ -153,6 +154,9 @@ local sameprefablist = {
     ['lightflier_flower_cave'] = 'flower',
     ['flower_cave_triple'] = 'flower',
 }
+local function ownerIsPlayer(item)
+	return item.replica.inventoryitem and item.replica.inventoryitem:IsGrandOwner(ThePlayer)
+end
 local function returnfunction()
     local backpack = ThePlayer.replica.inventory:GetOverflowContainer()
     if backpack then
@@ -172,7 +176,7 @@ local function returnfunction()
     for k, v in pairs(ThePlayer.replica.inventory:GetOpenContainers() or {}) do
         if k and k.replica and k.replica.container and ThePlayer.replica.inventory:IsHolding(k, true) then
             for i = 1, k.replica.container:GetNumSlots() do
-                if not k.replica.container:GetItemInSlot(i) and distsq(ThePlayer:GetPosition(), k:GetPosition()) == 0 then
+				if not k.replica.container:GetItemInSlot(i) and ownerIsPlayer(k) then
                     SendRPCToServer(RPC.PutAllOfActiveItemInSlot, i, k)
                     return
                 end
@@ -872,7 +876,7 @@ allowed_actions = {
         end,
         controllertable = {},
         selectitemfn = function(item) --store需要排除掉目标箱子里面的
-            return distsq(item:GetPosition(), ThePlayer:GetPosition()) == 0
+			return ownerIsPlayer(item)
         end,
         breakfn = function(act)
             local container = act.target and act.target.replica and act.target.replica.container
@@ -891,7 +895,7 @@ allowed_actions = {
         end,
 
         selectitemfn_force = function(tab)
-            if distsq(tab.item:GetPosition(), ThePlayer:GetPosition()) == 0 then
+			if ownerIsPlayer(tab.item) then
                 return custom_selectitemfn_force(tab)
             end
         end,
@@ -4241,7 +4245,7 @@ AddClassPostConstruct("widgets/invslot", function(self)
     local olddrop = self.DropItem
     local task
     function self:DropItem(wholestack)
-        if self.owner == lastdrop.owner and self.tile == lastdrop.tile and GetTime() - lastdrop.time < 0.5 then
+		if self.owner == lastdrop.owner and self.tile == lastdrop.tile and GetTime() - lastdrop.time < default_dropcheck_internal then
             if task then task:Cancel() end
             if lastdrop.item and banitem[lastdrop.item.prefab] then
             else
