@@ -1801,7 +1801,10 @@ allowed_actions = {
         end,
     } or {
         rpc = function(act)
-            if ThePlayer:HasTag("plantkin") and act.time >= 0.1 then
+			if ThePlayer:HasTag("self_fertilizable") and act.time >= 0.1 then
+				if act.target == ThePlayer then
+					act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
+				end
             else
                 act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
             end
@@ -2148,6 +2151,7 @@ function ActionQueuer:InitFn(inst)
 end
 
 local function canusecontroller(position, item, target, actionid)
+	--author_print(position, item, target, actionid)
     --left
     local function dofind(isright)
     local playeractionpicker = ThePlayer.components.playeractionpicker
@@ -2316,7 +2320,7 @@ end
 -- 传入 目标,是否右键,位置 返回 合法的动作,是否右键
 function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --action是储存的target的动作
     local actionid = action and action.id or action and action.action and action.action.id or action
-    --author_print('callGetAction:', target, actionid)
+	--author_print('callGetAction:', target, actionid)
     local actiontable = actionid and allowed_actions[actionid] and allowed_actions[actionid]
     pos = pos or target and target:GetPosition() or TheInput:GetWorldPosition()
     if target == self.posaction then target = nil end --self.posaction是虚构的目标，实际上获取动作的时候还是nil
@@ -2332,7 +2336,7 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
         return ACTIONS[actionid], allowed_actions[actionid]
     end
     local activeitem = INV_util:GetActiveItem()
-    --print(activeitem, mouse_item)
+	--author_print(activeitem, mouse_item)
     if mouse_item and (not activeitem or activeitem ~= mouse_item) then --这里有时候进不来？？
 		local a = canusecontroller(pos, mouse_item, target, actionid) --byd
         author_print('return3:', mouse_item)
@@ -2400,6 +2404,16 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
             end
         end
     end
+	--
+	if mouse_item and activeitem == mouse_item then             --这里有时候进不来？？
+		local a = canusecontroller(pos, mouse_item, target, actionid) --byd
+		author_print('return controller:', mouse_item)
+		if a and a.action and a.action.id and allowed_actions[a.action.id] and allowed_actions[a.action.id].controllertable then
+			return a,
+				a and a.action and a.action.id and allowed_actions[a.action.id] or
+				a and a.id and allowed_actions[a.id]
+		end
+	end
 end
 
 --check if item has the action actionid
