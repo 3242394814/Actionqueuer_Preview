@@ -4150,8 +4150,12 @@ AddClassPostConstruct("widgets/invslot", function(self)
             containerwithlowpirority
     end
 
-    local oldtrade = self.TradeItem
-    function self:TradeItem(stack_mod)
+	local oldOnControl = self.OnControl
+	function self:OnControl(control, down)
+		if down and control == CONTROL_ACCEPT then
+			if TheInput:IsControlPressed(CONTROL_FORCE_INSPECT) then
+			elseif TheInput:IsControlPressed(CONTROL_FORCE_TRADE) then
+				local stack_mod = TheInput:IsControlPressed(CONTROL_FORCE_STACK)
         local slot_number = self.num
         local character = ThePlayer
         local inventory = character and character.replica.inventory or nil
@@ -4253,7 +4257,9 @@ AddClassPostConstruct("widgets/invslot", function(self)
                 --TheFocalPoint.SoundEmitter:PlaySound("dontstarve/HUD/click_negative")
             end
         end
-        return oldtrade(self, stack_mod)
+			end
+		end
+		return oldOnControl(self, control, down)
     end
 
     local olddrop = self.DropItem
