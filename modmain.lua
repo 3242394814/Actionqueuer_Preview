@@ -65,13 +65,13 @@ local double_snake = GetAQConfigData("double_snake") or  false -- 210127 null: s
 -- 210116 null: 4x4 grid offsets for each heading
 local offsets_4x4 = { -- these are basically margin/offset multipliers, selection box often starts from adjacent tile
     [0] = {x = 3, z = 3}, -- heading of 0 and 360 are the same
-    [45] = {x = 1, z = 3}, 
-    [90] = {x = -1, z = 3}, 
-    [135] = {x = -1, z = 1}, 
-    [180] = {x = -1, z = -1}, 
-    [225] = {x = 1, z = -1}, 
-    [270] = {x = 3, z = -1}, 
-    [315] = {x = 3, z = 1}, 
+    [45] = {x = 1, z = 3},
+    [90] = {x = -1, z = 3},
+    [135] = {x = -1, z = 1},
+    [180] = {x = -1, z = -1},
+    [225] = {x = 1, z = -1},
+    [270] = {x = 3, z = -1},
+    [315] = {x = 3, z = 1},
     [360] = {x = 3, z = 3}}
 
 local DebugPrint = GetModConfigData("debug_mode") and function(...)
@@ -177,7 +177,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
         if farm_grid == "4x4" then spacing = 1.26 -- 210116 null: different spacing for 4x4 grid
         elseif farm_grid == "2x2" then spacing = 2 -- 210609 null: different spacing for 2x2 grid
         end
-    end 
+    end
 
     local heading, dir = GetHeadingDir()
     local diagonal = heading % 2 ~= 0
@@ -197,7 +197,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
 
     if deploy_fn == self.WaterAtPoint or -- 201217 null: added support for Watering of farming tiles
        deploy_fn == self.FertilizeAtPoint or -- 201223 null: added support for Fertilizing of farming tiles
-       deploy_fn == self.TerraformAtPoint or 
+       deploy_fn == self.TerraformAtPoint or
        item and item:HasTag("groundtile") then
         start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
         terraforming = true
@@ -217,11 +217,11 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
 
         if farm_grid == "4x4" then -- 4x4 grid
             -- 4x4 grid: spacing = 1.26, offset/margins = 0.11
-            start_x, start_z = tilepos.x + math.floor((start_x - tilepos.x)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].x, 
-                               tilepos.z + math.floor((start_z - tilepos.z)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].z 
+            start_x, start_z = tilepos.x + math.floor((start_x - tilepos.x)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].x,
+                               tilepos.z + math.floor((start_z - tilepos.z)/1.26 + 0.5) * 1.26 + 0.11 * offsets_4x4[heading].z
 
         elseif farm_grid == "2x2" then -- 210609 null: 2x2 grid: spacing = 2 (4/2), offset = 1 (4/2/2)
-            start_x, start_z = math.floor(start_x / 2) * 2 + 1, 
+            start_x, start_z = math.floor(start_x / 2) * 2 + 1,
                                math.floor(start_z / 2) * 2 + 1
 
         else -- 3x3 grid: spacing = 1.333 (4/3), offset = 0.665 (4/3/2)
@@ -231,7 +231,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
             -- 210201 null: /0.75 (3/4) instead of *1.333 (4/3) to better support edge of large -1600 to 1600 maps (blizstorm)
             -- start_x, start_z = math.floor(start_x * 0.75 + 0.5) / 0.75 + 0.665, 
             --                    math.floor(start_z * 0.75 + 0.5) / 0.75 + 0.665
-            start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset, 
+            start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
                                math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
                                -- 210202 null: remove +0.5 floored rounding for more consistent wormwood placements (blizstorm)
                                -- 210202 null: use more precise 3x3 grid offset for better alignment at edge of maps
@@ -245,7 +245,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
     local cur_pos = Point()
     local count = {x = 0, y = 0, z = 0}
     local row_swap = 1
-    
+
     -- 210127 null: added support for snaking within snaking for faster deployment (thanks to blizstorm)
     local step = 1
     local countz2 = 0
@@ -339,17 +339,10 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item)
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
                     not ( -- 不满足可以放置在此点位的要求
-                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
-                            )
-                        )
-                        or
-                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                nil, nil,
-                                ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer:GetRotation() or nil)
-                        )
+                        ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            nil, ThePlayer,
+                            ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer:GetRotation() or nil)
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
@@ -752,17 +745,10 @@ function ActionQueuer:GetPosList(spacing, snap_farm, tow, istill, maxsize, meta,
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
                     not ( -- 不满足可以放置在此点位的要求
-                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
-                            )
-                        )
-                        or
-                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                nil, nil,
-                                meta.rotation or nil
-                            )
+                        ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            nil, ThePlayer,
+                            meta.rotation or nil
                         )
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
