@@ -363,17 +363,10 @@ function ActionQueuerPreview:GetPosList(spacing, snap_farm, tow, istill, maxsize
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
                     not ( -- 不满足可以放置在此点位的要求
-                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
-                            )
-                        )
-                        or
-                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                nil, nil,
-                                meta.rotation or nil
-                            )
+                        ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            nil, ThePlayer,
+                            meta.rotation or nil
                         )
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
@@ -418,9 +411,6 @@ function ActionQueuerPreview:SpawnPreview(pos, meta)
             meta.prefab, meta.skin, meta.skin_id = me.prefab, me.skinname, me.skin_id
         end
         if not ent then
-            if table.contains({ "abigail_flower" }, meta.prefab) then
-                return
-            end
             ent = SpawnPrefab(meta.prefab, meta.skin, meta.skin_id, self.userid)
             ent.persists = false
             ent:AddTag("fx")
@@ -468,6 +458,7 @@ end
 
 -- 不预览的物品
 local Blacklist = {
+    abigail_flower = true, -- 阿巴盖尔之花（会炸）
     butterfly = true, -- 蝴蝶：无法预测-预测不准确 因为花朵有大有小
     minisign_item = true,  -- 小木牌：上级行为学Mod会乱放
     fertilizer = true, -- 便便桶 -- 萌萌的新的版本只会怼着一个地方施肥
@@ -755,9 +746,9 @@ AddComponentPostInit("playercontroller", function(self, inst)
         elseif snap_farm then
             -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
             local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-            if tilecenter.x % 4 == 0 then                                                        -- if center of tile is divisible by 4, then it's a medium/huge server
+            if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
                 farm3x3_offset =
-                    farm_spacing                                                                 -- adjust offset for medium/huge servers for 3x3 grid
+                    farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
             end
             start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
                 math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
@@ -857,17 +848,10 @@ AddComponentPostInit("playercontroller", function(self, inst)
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem.CanDeploy and
                     ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:IsDeployable(self.inst) and  -- 鼠标拿着物品&是可以部署的
                     not ( -- 不满足可以放置在此点位的要求
-                        (ThePlayer.replica.inventory:GetActiveItem()._custom_candeploy_fn and -- 如果有自定义规则，优先按自定义规则判定
-                            ThePlayer.replica.inventory:GetActiveItem():_custom_candeploy_fn( -- 自定义规则说能放在此点位
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos -- 兼容几何布局校准后的点位
-                            )
-                        )
-                        or
-                        (ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
-                                accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
-                                nil, nil,
-                                ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer:GetRotation() or nil)
-                        )
+                        ThePlayer.replica.inventory:GetActiveItem().replica.inventoryitem:CanDeploy(
+                            accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
+                            nil, ThePlayer,
+                            ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer:GetRotation() or nil)
                     )
                     or ThePlayer.components.playercontroller and ThePlayer.components.playercontroller.placer and ThePlayer.components.playercontroller.placer_recipe and not -- 鼠标上打包的建筑是否可以放置
                         TheWorld.Map:CanDeployRecipeAtPoint(
