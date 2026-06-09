@@ -5,7 +5,7 @@ function ENT_util:FindEntities(target, pos, range, fn)
     pos = target and target:GetPosition() or pos or ThePlayer and ThePlayer:GetPosition()
     local targettable = {}
     for _, ent in pairs(TheSim:FindEntities(pos.x, pos.y, pos.z, range or 10)) do
-        if fn and fn(ent) then
+        if not fn or fn and fn(ent) then
             table.insert(targettable, ent)
         end
     end
@@ -140,6 +140,7 @@ end
 
 function ENT_util:GetAnimation(ent)
     if ent == nil then return end
+    if not ent.AnimState then return end
     local a, b, c, d, e, f = ent.AnimState:GetHistoryData()
     return b
 end

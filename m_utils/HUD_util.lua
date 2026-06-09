@@ -99,32 +99,36 @@ end
 -- 使得不是全局对齐的ui可以拖动，func_stop用来执行拖动结束位置的事件
 -- 当存在UI_follow时，UI_follow为拖动的实体，但他会使得UI跟着移动
 function HUD_util:ActivateUIDraggable(UI, isleft, func_stop, UI_follow)
-    local pos_last = UI:GetPosition()
-
     UI_follow = UI_follow or UI
-    UI_follow.FollowMouse = function(ui)
-        if ui.followhandler == nil then
+    local pos_last = UI:GetPosition()
+    local followhandler
+    local function FollowMouse(ui)
+        if followhandler == nil then
             local cur_pos = TheInput:GetScreenPosition()
-            local scale = 1 / UI.parent:GetScale().x
+            local scale = 1 / ui.parent:GetScale().x
             local ori_pos = pos_last
-            ui.followhandler = TheInput:AddMoveHandler(function(x, y)
+            followhandler = TheInput:AddMoveHandler(function(x, y)
                 pos_last = (Vector3(x, y, 0) - cur_pos) * scale + ori_pos
-                UI:SetPosition(pos_last)
+                ui:SetPosition(pos_last)
             end)
         end
     end
+
 
     local _OnMouseButton = UI_follow.OnMouseButton
     UI_follow.OnMouseButton = function(ui, press, down, ...)
         local result = _OnMouseButton(ui, press, down, ...)
         if ui.focus then
-            if press == (isleft and MOUSEBUTTON_LEFT or MOUSEBUTTON_RIGHT) then
+            if press == (isleft == "middle" and MOUSEBUTTON_MIDDLE or isleft and MOUSEBUTTON_LEFT or MOUSEBUTTON_RIGHT) then
                 if down then
                     UI_follow:MoveToFront()
                     pos_last = UI:GetPosition()
-                    return ui:FollowMouse()
+                    return FollowMouse(UI)
                 else
-                    UI_follow:StopFollowMouse()
+                    if followhandler ~= nil then
+                        followhandler:Remove()
+                        followhandler = nil
+                    end
                     UI:SetPosition(pos_last)
                     if type(func_stop) == "function" then
                         func_stop(pos_last)
@@ -132,24 +136,18 @@ function HUD_util:ActivateUIDraggable(UI, isleft, func_stop, UI_follow)
                 end
             end
         end
-        ui:StopFollowMouse()
+        if followhandler ~= nil then
+            followhandler:Remove()
+            followhandler = nil
+        end
         return result
     end
-end
-
-local function MasterDo(fn, ...) --越权执行某个函数
-    local IsMasterSim = TheWorld.ismastersim
-    TheWorld.ismastersim = true
-    GLOBAL.MOD_SRC_LOCK = true
-    local a = pcall(fn, ...)
-    TheWorld.ismastersim = IsMasterSim
-    GLOBAL.MOD_SRC_LOCK = false
 end
 
 function HUD_util:GetPrefabAtlasandImage(prefab)
     if not GLOBAL.Prefabs[prefab] then return end
     local atlas, image
-    MasterDo(function()
+    MOD_util:MasterDo(function()
         local a = SpawnPrefab(prefab)
         atlas = a.replica.inventoryitem and (a.replica.inventoryitem:GetAtlas())
         image = a.replica.inventoryitem and (a.replica.inventoryitem:GetImage())
@@ -161,7 +159,7 @@ end
 function HUD_util:GetPrefabBuildandBank(prefab)
     if not GLOBAL.Prefabs[prefab] then return end
     local build, bank
-    MasterDo(function()
+    MOD_util:MasterDo(function()
         local a = SpawnPrefab(prefab)
         bank = a.AnimState:GetBankHash()
         build = a.AnimState:GetBuild()

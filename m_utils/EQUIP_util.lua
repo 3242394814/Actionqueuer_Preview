@@ -30,6 +30,29 @@ function EQUIP_util:IsRestricted(item)
     return IsRestricted
 end
 
+--[[ local item = m_select()
+local inventoryitem = item and item.replica and item.replica._.inventoryitem
+local classify = inventoryitem and inventoryitem.classified
+
+if not classify then return end
+local cd = classify and classify.rechargetime:value()
+
+if cd < 0 then
+    cd = classify and classify.recharge:value()
+end
+
+local percent = (cd or 180) / 180
+print(cd) ]]
+function EQUIP_util:GetChargeTime(item)
+    if not item or not item.replica then return end
+    local inventoryitem = item and item.replica and item.replica._.inventoryitem
+    local classify = inventoryitem and inventoryitem.classified
+    if not classify then return end
+    local recharge = classify and classify.recharge:value()
+    local percent = (recharge or 180) / 180
+    return percent
+end
+
 function EQUIP_util:GetCD(item)
     if not item or not item.replica then return end
     local inventoryitem = item and item.replica and item.replica._.inventoryitem
@@ -41,14 +64,6 @@ function EQUIP_util:GetCD(item)
     return cd * (1 - percent), percent
 end
 
-local function MasterDo(fn, ...) --越权执行某个函数
-    local IsMasterSim = TheWorld.ismastersim
-    TheWorld.ismastersim = true
-    GLOBAL.MOD_SRC_LOCK = true
-    local a = pcall(fn, ...)
-    TheWorld.ismastersim = IsMasterSim
-    GLOBAL.MOD_SRC_LOCK = false
-end
 local cddata = {}
 if TUNING.FORGE then
     for k, v in pairs(TUNING.FORGE) do
@@ -60,7 +75,7 @@ end
 function EQUIP_util:GetTotalCD(prefab)
     local totalcd
     if not cddata[prefab] then
-        MasterDo(function()
+        MOD_util:MasterDo(function()
             local a = SpawnPrefab(prefab)
             local rechargeable = a.components.rechargeable
             totalcd = rechargeable and rechargeable.chargetime

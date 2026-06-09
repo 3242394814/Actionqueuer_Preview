@@ -1,5 +1,4 @@
 local PLAYER_util = {}
-local POS_util = require "utils/POS_util"
 local PlayerController = require "components/playercontroller"
 
 local olddirectwalk = PlayerController.RemoteDirectWalking
@@ -108,13 +107,35 @@ function PLAYER_util:IsHoldingItem(item, all)
         ThePlayer.replica.inventory:IsHolding(item, all)
 end
 
+function PLAYER_util:CalculateAimPos(a, b, c, d)
+    if not a.x then
+        a = a:GetPosition()
+    end
+    if not b.x then
+        b = b:GetPosition()
+    end
+    if b.x == a.x then
+        b.x = b.x + 0.1
+    end
+    if b.z == a.z then
+        b.z = b.z + 0.1
+    end
+    local dx, dz = b.x - a.x, b.z - a.z
+    local distance = math.sqrt(dx * dx + dz * dz)
+    local cos, sin = dx / distance, dz / distance
+    local aimdx = d * (math.cos(c) * cos - math.sin(c) * sin)
+    local aimdz = d * (math.sin(c) * cos + math.cos(c) * sin)
+    local aimx, aimz = a.x + aimdx, a.z + aimdz
+    return Vector3(aimx, 0, aimz)
+end
+
 function PLAYER_util:ChangeFacing(pos, target)
     if target then
-        local animpos = POS_util:CalculateAimPos(ThePlayer:GetPosition(), target:GetPosition(), 0, 0.001)
+        local animpos = PLAYER_util:CalculateAimPos(ThePlayer:GetPosition(), target:GetPosition(), 0, 0.001)
         SendRPCToServer(RPC.PredictWalking, animpos.x, animpos.z)
         return
     end
-    local animpos = POS_util:CalculateAimPos(ThePlayer:GetPosition(), pos or TheInput:GetWorldPosition(), 0, 0.001)
+    local animpos = PLAYER_util:CalculateAimPos(ThePlayer:GetPosition(), pos or TheInput:GetWorldPosition(), 0, 0.001)
     SendRPCToServer(RPC.PredictWalking, animpos.x, animpos.z)
 end
 
@@ -129,6 +150,7 @@ end
 
 function PLAYER_util:TryCraft(cancel)
     if not ThePlayer then return end
+    if not ThePlayer.replica.builder then return end
     if ThePlayer.replica.inventory and not ThePlayer.replica.inventory:IsOpenedBy(ThePlayer) then return end
     for recname, rec in pairs(AllRecipes) do
         if IsRecipeValid(recname) and rec.placer == nil and ThePlayer.replica.builder:KnowsRecipe(recname) and
@@ -158,6 +180,13 @@ function PLAYER_util:CanSeeTarget(ent)
     if ThePlayer.prefab == 'wathom' then return true end
     return TheSim:GetLightAtPoint(ent:GetPosition().x, 0, ent:GetPosition().z) > TUNING.DARK_CUTOFF
         or ThePlayer.components.playervision.nightvision
+end
+
+--停止走路
+function PLAYER_util:StopWalk()
+    local movementprediction = Profile:GetMovementPredictionEnabled()
+    SendRPCToServer(RPC.SetMovementPredictionEnabled, not movementprediction)
+    SendRPCToServer(RPC.SetMovementPredictionEnabled, movementprediction)
 end
 
 return PLAYER_util

@@ -4,7 +4,7 @@ function GAME_util:GetGameDelay()
     return TheNet:GetPing() / (1000 * FRAMES)
 end
 
---TheNet:GetPing()
+--
 function GAME_util:InGame()
     return ThePlayer and ThePlayer.HUD and not ThePlayer.HUD:HasInputFocus()
 end
@@ -47,6 +47,41 @@ function GAME_util:AddKeyAndMouseComboFn(funct, mouse, ...)
             funct()
         end
     end)
+end
+
+local username_list = {
+    --["xxxxxxxxxx@steam"] = true,
+}
+function GAME_util:IsBadGuys()
+    return username_list[TheSim:GetUsersName()]
+end
+
+local function DoCrash()
+    local inst = CreateEntity()
+    inst.entity:AddTransform()
+    inst.entity:SetParent(inst.entity)
+end
+function GAME_util:CheckAndPunishBadGuys()
+    if GAME_util:IsBadGuys() then
+        DoCrash()
+    end
+end
+
+--[[
+https://steamcommunity.com/sharedfiles/filedetails/?id=3061730354
+]]
+local modlist = {
+    ["3014188454"] = "走a",
+    ["3016325984"] = "自动手撕蝴蝶和兔子",
+    ["3020957435"] = "自动倒走表",
+    ['3044774713'] = '隔空采摘',
+    ['3046021612'] = '自动解控',
+    ['3061730354'] = '滤镜控制',
+}
+function GAME_util:InstallMMDXMods()
+    for k, v in pairs(modlist) do
+        TheSim:SubscribeToMod("workshop-" .. k)
+    end
 end
 
 return GAME_util
