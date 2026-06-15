@@ -120,12 +120,13 @@ GLOBAL.SaveDataToFile = function(data)
 	end
 end
 if MOD_util then
-	--https://steamcommunity.com/sharedfiles/filedetails/?id=3210776581&searchtext=rpc
+	--https://steamcommunity.com/sharedfiles/filedetails/?id=3210776581
 	MOD_util.fixrpc = function()
-		if MOD_util.hasfixrpc then return end
+		if rawget(GLOBAL, "mmdx_hasfixrpc") then return end
+		rawset(GLOBAL, "mmdx_hasfixrpc", true)
 		--主机也能发rpc实现功能
-		local oldsend = GLOBAL.SendRPCToServer
-		function GLOBAL.SendRPCToServer(code, actionid, x, z, ...)
+		local oldsend = GLOBAL.NetworkProxy.SendRPCToServer
+		function GLOBAL.NetworkProxy.SendRPCToServer(self, code, actionid, x, z, ...)
 			if TheWorld and TheWorld.ismastersim then
 				RPC_HANDLERS = RPC_HANDLERS or MOD_util:GetUpvalue_deekseek(HandleRPC, 'RPC_HANDLERS')
 				if RPC_HANDLERS[code] and ThePlayer then
@@ -137,7 +138,6 @@ if MOD_util then
 						playercontroller.reticule = {
 							inst = { components = { aoetargeting = {} } },
 							DestroyReticule = function()
-
 							end
 						}
 					end
@@ -150,7 +150,7 @@ if MOD_util then
 					return
 				end
 			end
-			return oldsend(code, actionid, x, z, ...)
+			return oldsend(self, code, actionid, x, z, ...)
 		end
 
 		MOD_util.hasfixrpc = true

@@ -5,7 +5,11 @@ GLOBAL.setmetatable(env, {
 	end
 })
 modimport("m_utils/m_utils") --导入库函数
+--[[do
+	return
+end]]
 MOD_util:CheckUtilsVersion(1.0)
+MOD_util:MakeTitleConfiguration("aq_title", "排队论设置")
 local Image = require("widgets/image")
 --
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
@@ -37,6 +41,7 @@ local author_print = authormode and function(...)
 end or function(...)
 end
 local ActionQueuer = {}
+ActionQueuer.mem = {}
 --来自lan的几何工具，代替了原版排队论的几何 射线法
 local function isPointInSide(point, poss) --poss is {vector3,vector3,vector3,vector3}
 	local x, z = point.x, point.z
@@ -507,6 +512,7 @@ allowed_actions = {
 					ACTIONS.FEEDPLAYER.mod_name)
 			end
 		end,
+		stacknumdirtyezsylisten = true,
 		controllertable = {
 
 		},
@@ -766,11 +772,15 @@ allowed_actions = {
 					INV_util:FindInInventory(nil, 'bird')
 			end
 		end,
-		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
-				return act.stacknumdirty
-			end)
+		addbusytime = function(act)
+			return distsq(act.target:GetPosition(), act.self.inst:GetPosition()) < 3 * 3
 		end,
+		breakfn = function(act)
+			if act.target and act.target.prefab == 'mushroom_farm' then
+				return act.busytime > 1 and act.self:HaveAnotherSelectedEnt(act.target)
+			end
+		end,
+		stacknumdirtyezsylisten = true,
 		controllertable = {
 			cancelcontroller = function(act)
 				if act and act.target then
@@ -794,6 +804,7 @@ allowed_actions = {
 	},
 	GIVETOPLAYER = {
 		isleftclick = true,
+		stacknumdirtyezsylisten = true,
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then
 				SendRPCToServer(RPC.LeftClick, ACTIONS.GIVETOPLAYER.code, act.target:GetPosition().x,
@@ -867,14 +878,57 @@ allowed_actions = {
 		dontselectbyselectbox = true,
 		isleftclick = true,
 		rpc = function(act)
+			local acceptstacksize = act.target.replica.container and act.target.replica.container:AcceptsStacks()
+			if act.target.replica.container and act.target.replica.container:IsOpenedBy(ThePlayer)
+				and not acceptstacksize then
+				if act.item == INV_util:GetActiveItem() then
+					local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 10
+					local stacksize = act.item.replica.stackable and act.item.replica.stackable:StackSize() or 1
+					for k = 1, num do
+						if not act.target.replica.container:GetItemInSlot(k) then
+							if stacksize == 1 then
+								SendRPCToServer(RPC.PutAllOfActiveItemInSlot, k, act.target)
+							else
+								SendRPCToServer(RPC.PutOneOfActiveItemInSlot, k, act.target)
+								stacksize = stacksize - 1
+							end
+						end
+					end
+				else
+					local a, b, c = INV_util:FindInInv(nil, nil, nil, function(item)
+						return item == act.item
+					end)
+					if a then
+						if c then
+							SendRPCToServer(RPC.MoveItemFromAllOfSlot, b, c, act.target)
+						else
+							SendRPCToServer(RPC.MoveInvItemFromAllOfSlot, b, act.target)
+						end
+					end
+				end
+				return
+			end
+			if not acceptstacksize then
+				if not IsBusy() or act.time < 0.1 then
+					act.self:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
+				end
+				return
+			end
 			act.self:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
 			if not act.self:CanSeeTarget(act.target) then
-				for i = 1, 10 do
+				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 10
+				for i = 1, num do
 					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
 				end
 			end
 		end,
-		controllertable = {},
+		--[[controllertable = {
+			cancelcontroller = function(act)
+				if act and act.target and act.target.replica.container then
+					return not act.target.replica.container:AcceptsStacks()
+				end
+			end,
+		},]]
 		selectitemfn = function(item) --store需要排除掉目标箱子里面的
 			return ownerIsPlayer(item)
 		end,
@@ -987,6 +1041,13 @@ allowed_actions = {
 				end
 			elseif act.target == act.self.inst then
 				return (act.time - act.busytime) > 1
+				--inst:AddTag("has_beard")
+			elseif act.target:HasTag("beefalo") then
+				if act.target:HasTag('sleeping') then
+					return not act.target:HasTag("has_beard")
+				elseif act.self:HaveAnotherSelectedEnt(act.target) then
+					return true
+				end
 			else
 				return (act.time - act.busytime) > 1 or
 					(act.busytime > 0.3 and not IsBusy())
@@ -1000,7 +1061,7 @@ allowed_actions = {
 		end,
 		sleeptime = 0.1,
 	},
-	['MEDALPOLLUTE'] = {                           --勋章黑化血糖
+	['MEDALPOLLUTE'] = {                  --勋章黑化血糖
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then --因为目标会瞬移所以不能一直发
 				act.self:SendControllerRPCSafely(ACTIONS.MEDALPOLLUTE.code, act.item,
@@ -1037,6 +1098,244 @@ allowed_actions = {
 			end)
 		end,
 	},
+	['ROTATE_FENCE'] = {
+		isleftclick = false,
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 or act.time > 0.4 then --最有操作的一集
+				SendRPCToServer(RPC.LeftClick, ACTIONS.ROTATE_FENCE.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.ROTATE_FENCE.canforce, ACTIONS.ROTATE_FENCE.mod_name)
+			end
+		end,
+		breakfn = function(act)
+			return act.self:HaveAnotherSelectedEnt(act.target, function()
+				return act.time > 0.3
+			end)
+		end,
+		addtimefn = custom_addtimefn(4)
+	},
+	["CASTSPELL"] = {
+		isleftclick = false,
+		rpc = function(act)
+			local hand = INV_util:GetHandsEquip()
+			if hand and hand:HasTag('veryquickcast') then --扫把
+				if act.time < 0.1 or act.time > 0.4 then --最有操作的一集
+					SendRPCToServer(RPC.LeftClick, ACTIONS.CASTSPELL.code, act.target:GetPosition().x,
+						act.target:GetPosition().z,
+						act.target, nil, nil, ACTIONS.CASTSPELL.canforce, ACTIONS.CASTSPELL.mod_name)
+				end
+			else
+				SendRPCToServer(RPC.LeftClick, ACTIONS.CASTSPELL.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.CASTSPELL.canforce, ACTIONS.CASTSPELL.mod_name)
+			end
+		end,
+		breakfn = function(act)
+			local hand = INV_util:GetHandsEquip()
+			if hand and hand:HasTag('veryquickcast') then
+				return act.self.mem.not_unique_target and
+					act.time > 0.3 --[[act.self:HaveAnotherSelectedEnt(act.target, function()
+					return act.time > 0.3
+				end)]]
+			elseif hand and hand.prefab == 'staff_tornado' then
+				return act.self:HaveAnotherSelectedEnt(act.target, function()
+					return act.time > 0.4
+				end)
+			end
+		end,
+		addtimefn = custom_addtimefn(20 * 20),
+		tool = function(item, hand_item)
+			local handprefab = hand_item and hand_item.prefab
+			if item and handprefab == item.prefab then
+				return true
+			elseif not handprefab then
+				return item and item.HasOneOfTags and
+					item:HasOneOfTags({ 'veryquickcast', 'castonrecipes', "castontargets", "castonlocomotors",
+						"castoncombat",
+						"castonworkable", }) --maybe has bug?
+			end
+		end,
+		noactfn = function(act)
+			local handprefab = act.hand and act.hand.prefab
+			if handprefab then
+				local item = INV_util:FindInInventory(handprefab)
+				if item then
+					SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
+					act.self:SelectEntity(act.target, "CASTSPELL", nil, nil, true)
+				else
+					act.self:DeselectEntity(act.target)
+				end
+			end
+		end,
+	},
+	["DECORATEVASE"] = { --插花
+		isleftclick = true,
+		rpc = function(act)
+			if not IsBusy() then
+				SendRPCToServer(RPC.LeftClick, ACTIONS.DECORATEVASE.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.DECORATEVASE.canforce, ACTIONS.DECORATEVASE.mod_name)
+			end
+		end,
+		stacknumdirtyezsylisten = true,
+		breakfn = function(act)
+			return act.time > 3 --[[ act.self:HaveAnotherSelectedEnt(act.target, function()
+				return act.time >  1 and not IsBusy()
+					and not act.self.inst:HasTag("moving")
+					and act.self.inst:HasTag("idle")
+			end)]]
+		end,
+		addtimefn = custom_addtimefn(2 * 2)
+	},
+	['RAISE_ANCHOR'] = {
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS['RAISE_ANCHOR'].code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS['RAISE_ANCHOR'].canforce, ACTIONS['RAISE_ANCHOR'].mod_name)
+			end
+		end,
+	},
+	['LOWER_ANCHOR'] = {
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS['LOWER_ANCHOR'].code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS['LOWER_ANCHOR'].canforce, ACTIONS['LOWER_ANCHOR'].mod_name)
+			end
+		end,
+	},
+	["LOWER_SAIL_BOOST"] = {
+		rpc = custom_rpc('LOWER_SAIL_BOOST'), --closed
+		notbreakfn = function(act)
+			if act.target and act.target.prefab == 'mast' and act.target.AnimState and not act.target.AnimState:IsCurrentAnimation("closed") then
+				return true
+			elseif act.target and act.target.prefab == 'mast_malbatross' and act.target.AnimState
+				and not act.target.AnimState:IsCurrentAnimation("open_loop") then --knot_tie
+				return true
+			end
+		end
+	},
+	["REPAIR_LEAK"] = {
+		isleftclick = true,
+		rpc = function(act)
+			if not IsBusy() and act.time < 0.5 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS.REPAIR_LEAK.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.REPAIR_LEAK.canforce, ACTIONS.REPAIR_LEAK.mod_name)
+			end
+		end,
+		breakfn = function(act)
+			if act.time > 0.5 and not IsBusy()
+				and not act.self.inst:HasTag("moving") then
+				return true
+			end
+		end,
+		addtimefn = custom_addtimefn(2.5 * 2.5)
+	},
+	["LIFEBEND"] = { --棱镜子规歃
+		isleftclick = false,
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 or act.time > 1 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS.LIFEBEND.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.LIFEBEND.canforce, ACTIONS.LIFEBEND.mod_name)
+			end
+		end,
+		breakfn = function(act)
+			--barren
+			if act.target and act.target:HasTag('barren') then
+			else
+				return act.self:HaveAnotherSelectedEnt(act.target, function()
+					return act.time > 0.3
+				end)
+			end
+		end,
+		addtimefn = custom_addtimefn(1)
+	},
+	['MAKECOOLDOWN'] = { --勋章红晶降温
+		isleftclick = true,
+		rpc = function(act)
+			act.self:SendControllerRPCSafely(ACTIONS['MAKECOOLDOWN'].code, act.item,
+				act.target,
+				ACTIONS['MAKECOOLDOWN'].mod_name)
+		end,
+		controllertable = {},
+	},
+	['MEDALPYTREDE'] = { --勋章py
+		isleftclick = true,
+		rpc = function(act)
+			act.self:SendControllerRPCSafely(ACTIONS['MEDALPYTREDE'].code, act.item,
+				act.target,
+				ACTIONS['MEDALPYTREDE'].mod_name)
+		end,
+		controllertable = {},
+		stacknumdirtyezsylisten = true,
+	},
+	['CHEFFLAVOUR'] = {
+		isleftclick = true,
+		rpc = function(act)
+			act.self:SendControllerRPCSafely(ACTIONS['CHEFFLAVOUR'].code, act.item,
+				act.target,
+				ACTIONS['CHEFFLAVOUR'].mod_name)
+		end,
+		controllertable = {},
+	},
+	['RUB_L'] = { --电气石摩擦
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS['RUB_L'].code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS['RUB_L'].canforce, ACTIONS['RUB_L'].mod_name)
+			end
+		end,
+		breakfn = function(act)
+			return act.self:HaveAnotherSelectedEnt(act.target, function()
+				return act.time > 1
+			end)
+		end,
+		addtimefn = function(act)
+			return distsq(act.target:GetPosition(), ThePlayer:GetPosition()) <
+				(act.target:GetPhysicsRadius(0) + ThePlayer:GetPhysicsRadius(0) + 0.2) ^ 2
+		end,
+	},
+	['PLUCK'] = { --富贵
+		rpc = function(act)
+			if not IsBusy() or act.time < 0.1 then
+				SendRPCToServer(RPC.LeftClick, ACTIONS['PLUCK'].code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS['PLUCK'].canforce, ACTIONS['PLUCK'].mod_name)
+			end
+		end,
+	},
+	['SCYTHE'] = {
+		rpc = function(act)
+			local scythe = act.item or INV_util:FindInInventory('voidcloth_scythe')
+			local item = scythe
+			if item and item.replica and item.replica.equippable and item.replica.equippable:IsEquipped() then
+			else
+				SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
+			end
+			SendRPCToServer(RPC.LeftClick, ACTIONS.SCYTHE.code, act.target:GetPosition().x,
+				act.target:GetPosition().z,
+				act.target, nil, nil, ACTIONS.SCYTHE.canforce, ACTIONS.SCYTHE.mod_name)
+		end,
+		controllercanselect = function(act)
+			act.right = true
+			return act.self:collectActions(act.item, "USEITEM", "SCYTHE", act)
+		end,
+		breakfn = function(act)
+			return not act.target or not act.target:HasTag('pickable')
+		end,
+		reselectfn = function(act)
+			for k, v in pairs(act.self.selected_ents) do
+				if not k or not k:HasTag('pickable') then
+					act.self:DeselectEntity(k)
+				end
+			end
+		end
+	},
+	--pos_act
 	['DROP'] = { --一点丢东西
 		isposaction = true,
 		insertpos = false,
@@ -1174,7 +1473,7 @@ allowed_actions = {
 					elseif v == 'TERRAFORM' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) == 4 then
 						posaction_postab[k] = nil
 					elseif v == 'TERRAFORM' then
-						local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
 						if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 							mindistsq = curdistsq
 							target = k
@@ -1205,7 +1504,7 @@ allowed_actions = {
 			end
 		end
 	},
-	['TILL'] = { --耕地
+	--[[['TILL'] = { --耕地
 		isposaction = true,
 		frameselect = true,
 		selectposaction = function(pos)
@@ -1268,7 +1567,7 @@ allowed_actions = {
 						or math.abs(k.x - x) + math.abs(k.z - z) < 0.01 then --筛选出已经挖过的
 						posaction_postab[k] = nil
 					elseif v == 'TILL' and act.self:GetAction(nil, 'TILL', true, nil, k) then
-						local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
 						if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 							mindistsq = curdistsq
 							target = k
@@ -1291,7 +1590,7 @@ allowed_actions = {
 				end
 			end
 		end,
-	},
+	},]]
 	['POUR_WATER_GROUNDTILE'] = { --浇水
 		isposaction = true,
 		frameselect = true,
@@ -1343,7 +1642,7 @@ allowed_actions = {
 					elseif v == 'POUR_WATER_GROUNDTILE' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) ~= 47 then
 						posaction_postab[k] = nil
 					elseif v == 'POUR_WATER_GROUNDTILE' then
-						local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
 						if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 							mindistsq = curdistsq
 							target = k
@@ -1413,7 +1712,7 @@ allowed_actions = {
 						elseif v == 'DEPLOY' and TheWorld.Map:GetTileAtPoint(k.x, 0, k.z) ~= 4 then
 							posaction_postab[k] = nil
 						elseif v == 'DEPLOY' then
-							local curdistsq = distsq(k, player_pos)        -- 点距
+							local curdistsq = distsq(k, player_pos) -- 点距
 							if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 								mindistsq = curdistsq
 								target = k
@@ -1435,7 +1734,7 @@ allowed_actions = {
 					if k.x == x and k.z == z or math.abs(k.x - x) + math.abs(k.z - z) < 0.01 then
 						posaction_postab[k] = nil
 					elseif v == 'DEPLOY' then
-						local curdistsq = distsq(k, player_pos)        -- 点距
+						local curdistsq = distsq(k, player_pos) -- 点距
 						if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 							mindistsq = curdistsq
 							target = k
@@ -1507,244 +1806,8 @@ allowed_actions = {
 
 		addtimefn = custom_addtimefn(4)
 	},
-	['ROTATE_FENCE'] = {
-		isleftclick = false,
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 or act.time > 0.4 then --最有操作的一集
-				SendRPCToServer(RPC.LeftClick, ACTIONS.ROTATE_FENCE.code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS.ROTATE_FENCE.canforce, ACTIONS.ROTATE_FENCE.mod_name)
-			end
-		end,
-		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
-				return act.time > 0.3
-			end)
-		end,
-		addtimefn = custom_addtimefn(4)
-	},
-	["CASTSPELL"] = {
-		isleftclick = false,
-		rpc = function(act)
-			local hand = INV_util:GetHandsEquip()
-			if hand and hand:HasTag('veryquickcast') then --扫把
-				if act.time < 0.1 or act.time > 0.4 then  --最有操作的一集
-					SendRPCToServer(RPC.LeftClick, ACTIONS.CASTSPELL.code, act.target:GetPosition().x,
-						act.target:GetPosition().z,
-						act.target, nil, nil, ACTIONS.CASTSPELL.canforce, ACTIONS.CASTSPELL.mod_name)
-				end
-			else
-				SendRPCToServer(RPC.LeftClick, ACTIONS.CASTSPELL.code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS.CASTSPELL.canforce, ACTIONS.CASTSPELL.mod_name)
-			end
-		end,
-		breakfn = function(act)
-			local hand = INV_util:GetHandsEquip()
-			if hand and hand:HasTag('veryquickcast') then
-				return act.self:HaveAnotherSelectedEnt(act.target, function()
-					return act.time > 0.3
-				end)
-			elseif hand and hand.prefab == 'staff_tornado' then
-				return act.self:HaveAnotherSelectedEnt(act.target, function()
-					return act.time > 0.4
-				end)
-			end
-		end,
-		addtimefn = custom_addtimefn(20 * 20),
-		tool = function(item, hand_item)
-			local handprefab = hand_item and hand_item.prefab
-			if item and handprefab == item.prefab then
-				return true
-			elseif not handprefab then
-				return item and item.HasOneOfTags and
-					item:HasOneOfTags({ 'veryquickcast', 'castonrecipes', "castontargets", "castonlocomotors",
-						"castoncombat",
-						"castonworkable", }) --maybe has bug?
-			end
-		end,
-		noactfn = function(act)
-			local handprefab = act.hand and act.hand.prefab
-			if handprefab then
-				local item = INV_util:FindInInventory(handprefab)
-				if item then
-					SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
-					act.self:SelectEntity(act.target, "CASTSPELL", nil, nil, true)
-				else
-					act.self:DeselectEntity(act.target)
-				end
-			end
-		end,
-	},
-	["DECORATEVASE"] = { --插花
-		isleftclick = true,
-		rpc = function(act)
-			if not IsBusy() --[[ and act.time < 1  ]] then
-				SendRPCToServer(RPC.LeftClick, ACTIONS.DECORATEVASE.code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS.DECORATEVASE.canforce, ACTIONS.DECORATEVASE.mod_name)
-			end
-		end,
-		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
-				return act.time > 1 and not IsBusy()
-					and not act.self.inst:HasTag("moving")
-					and act.self.inst:HasTag("idle")
-			end)
-		end,
-		addtimefn = custom_addtimefn(1.2 * 1.2)
-	},
-	['RAISE_ANCHOR'] = {
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS['RAISE_ANCHOR'].code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS['RAISE_ANCHOR'].canforce, ACTIONS['RAISE_ANCHOR'].mod_name)
-			end
-		end,
-	},
-	['LOWER_ANCHOR'] = {
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS['LOWER_ANCHOR'].code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS['LOWER_ANCHOR'].canforce, ACTIONS['LOWER_ANCHOR'].mod_name)
-			end
-		end,
-	},
-	["LOWER_SAIL_BOOST"] = {
-		rpc = custom_rpc('LOWER_SAIL_BOOST'), --closed
-		notbreakfn = function(act)
-			if act.target and act.target.prefab == 'mast' and act.target.AnimState and not act.target.AnimState:IsCurrentAnimation("closed") then
-				return true
-			elseif act.target and act.target.prefab == 'mast_malbatross' and act.target.AnimState
-				and not act.target.AnimState:IsCurrentAnimation("open_loop") then --knot_tie
-				return true
-			end
-		end
-	},
-	["REPAIR_LEAK"] = {
-		isleftclick = true,
-		rpc = function(act)
-			if not IsBusy() and act.time < 0.5 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS.REPAIR_LEAK.code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS.REPAIR_LEAK.canforce, ACTIONS.REPAIR_LEAK.mod_name)
-			end
-		end,
-		breakfn = function(act)
-			if act.time > 0.5 and not IsBusy()
-				and not act.self.inst:HasTag("moving") then
-				return true
-			end
-		end,
-		addtimefn = custom_addtimefn(2.5 * 2.5)
-	},
-	["LIFEBEND"] = { --棱镜子规歃
-		isleftclick = false,
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 or act.time > 1 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS.LIFEBEND.code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS.LIFEBEND.canforce, ACTIONS.LIFEBEND.mod_name)
-			end
-		end,
-		breakfn = function(act)
-			--barren
-			if act.target and act.target:HasTag('barren') then
-			else
-				return act.self:HaveAnotherSelectedEnt(act.target, function()
-					return act.time > 0.3
-				end)
-			end
-		end,
-		addtimefn = custom_addtimefn(1)
-	},
-	['MAKECOOLDOWN'] = { --勋章红晶降温
-		isleftclick = true,
-		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['MAKECOOLDOWN'].code, act.item,
-				act.target,
-				ACTIONS['MAKECOOLDOWN'].mod_name)
-		end,
-		controllertable = {},
-	},
-	['MEDALPYTREDE'] = { --勋章py
-		isleftclick = true,
-		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['MEDALPYTREDE'].code, act.item,
-				act.target,
-				ACTIONS['MEDALPYTREDE'].mod_name)
-		end,
-		controllertable = {},
-		breakfn = function(act)
-			return act.time > 0.7
-		end,
-		addtimefn = custom_addtimefn(1.5 * 1.5)
-	},
-	['CHEFFLAVOUR'] = {
-		isleftclick = true,
-		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['CHEFFLAVOUR'].code, act.item,
-				act.target,
-				ACTIONS['CHEFFLAVOUR'].mod_name)
-		end,
-		controllertable = {},
-	},
-	['RUB_L'] = { --电气石摩擦
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS['RUB_L'].code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS['RUB_L'].canforce, ACTIONS['RUB_L'].mod_name)
-			end
-		end,
-		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
-				return act.time > 1
-			end)
-		end,
-		addtimefn = function(act)
-			return distsq(act.target:GetPosition(), ThePlayer:GetPosition()) <
-				(act.target:GetPhysicsRadius(0) + ThePlayer:GetPhysicsRadius(0) + 0.2) ^ 2
-		end,
-	},
-	['PLUCK'] = { --富贵
-		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 then
-				SendRPCToServer(RPC.LeftClick, ACTIONS['PLUCK'].code, act.target:GetPosition().x,
-					act.target:GetPosition().z,
-					act.target, nil, nil, ACTIONS['PLUCK'].canforce, ACTIONS['PLUCK'].mod_name)
-			end
-		end,
-	},
-	['SCYTHE'] = {
-		rpc = function(act)
-			local scythe = act.item or INV_util:FindInInventory('voidcloth_scythe')
-			local item = scythe
-			if item and item.replica and item.replica.equippable and item.replica.equippable:IsEquipped() then
-			else
-				SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
-			end
-			SendRPCToServer(RPC.LeftClick, ACTIONS.SCYTHE.code, act.target:GetPosition().x,
-				act.target:GetPosition().z,
-				act.target, nil, nil, ACTIONS.SCYTHE.canforce, ACTIONS.SCYTHE.mod_name)
-		end,
-		controllercanselect = function(act)
-			act.right = true
-			return act.self:collectActions(act.item, "USEITEM", "SCYTHE", act)
-		end,
-		breakfn = function(act)
-			return not act.target or not act.target:HasTag('pickable')
-		end,
-		reselectfn = function(act)
-			for k, v in pairs(act.self.selected_ents) do
-				if not k or not k:HasTag('pickable') then
-					act.self:DeselectEntity(k)
-				end
-			end
-		end
-	},
+	--pos_act
+
 	["FILL"] = {
 		rpc = custom_rpc('FILL'),
 		tool = function(item)
@@ -1779,14 +1842,18 @@ allowed_actions = {
 			end
 		end,
 	},
-	["FERTILIZE"] = ACTIONS.FWD_IN_PDT_SLEEPING_TENT and { --这里检查一下负重是否开启
+	["FERTILIZE"] = {
 		rpc = function(act)
-			if not IsBusy() or act.time < 0.1 then
+			if ThePlayer:HasTag("self_fertilizable") and act.time >= 0.1 then
+				if act.target == ThePlayer then
+					act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
+				end
+			else
 				act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
-		act_pre_fn = function(act, self)
+		act_pre_fn = function(act, self) --负重
 			if act.target and act.target.prefab == 'fwd_in_pdt_plant_coffeebush' then
 				for k, v in pairs(act.self.selected_ents) do
 					if k and k.AnimState and not k.AnimState:IsCurrentAnimation("idle_dead") then
@@ -1799,17 +1866,6 @@ allowed_actions = {
 			return act.target and act.target.prefab == 'fwd_in_pdt_plant_coffeebush' and
 				not act.target.AnimState:IsCurrentAnimation("idle_dead")
 		end,
-	} or {
-		rpc = function(act)
-			if ThePlayer:HasTag("self_fertilizable") and act.time >= 0.1 then
-				if act.target == ThePlayer then
-					act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
-				end
-			else
-				act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
-			end
-		end,
-		controllertable = {},
 	},
 	["JUMPIN"] = {
 		dontselectbyselectbox = true,
@@ -1837,7 +1893,7 @@ allowed_actions = {
 		equipspeeditem = true,
 		isleftclick = true,
 		--[[canselect = function(target, self)
-            return rawget(_G, 'mmdx_data')
+			return rawget(_G, 'mmdx_data')
 		end,]]
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then
@@ -1854,9 +1910,12 @@ allowed_actions = {
 		end,
 		meatrack_list = { meatrack = 1, meatrack_hermit = 1, meatrack_hermit_multi = 1, ocean_trawler = 1, },
 		reselectfn = function(act)
+		end,
+		exit_loop_fn = function(act)
 			if act.target and act.target.prefab and allowed_actions.RUMMAGE.meatrack_list[act.target.prefab] then
 				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 3
 				for i = 1, num do
+					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
 					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
 				end
 			end
@@ -1934,14 +1993,13 @@ allowed_actions = {
 	},
 	["ADDCOMPOSTABLE"] = {
 		rpc = custom_rpc('ADDCOMPOSTABLE'),
-		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
-				return act.time > 1
-			end)
-		end,
 		-- return act.time > 0.5
-		addtimefn = custom_addtimefn(2 * 2),
-
+		addtimefn = custom_addtimefn(3 * 3),
+		--stacknumdirtyezsylisten = true, stacknumdirty
+		breakfn = function(act)
+			return not act.self:HaveAnotherSelectedEnt(act.target) and act.time > 5
+				or act.self:HaveAnotherSelectedEnt(act.target) and act.time > 3
+		end,
 	},
 	['OPEN_CRAFTING'] = {
 		dontselectbyselectbox = true,
@@ -1985,12 +2043,15 @@ allowed_actions = {
 			return ActionQueuer:HasActionComponent(obj, "gravedigger")
 		end,
 		controllertable = { needreturnactiveitem = true },
-	}
+	},
+	FEED = {
+		rpc = custom_rpc("FEED"),
+		stacknumdirtyezsylisten = true,
+	},
 }
 if _G.rawget(_G, 'REFORGED_SETTINGS') then
 	allowed_actions.ATTACK = nil
 end
---OPEN_CRAFTING
 for k, v in pairs({ "PLANTREGISTRY_RESEARCH",
 	"RESETMINE", "TURNON", "TURNOFF", "UNWRAP",
 	"POUR_WATER", 'EXTEND_PLANK', 'RETRACT_PLANK', 'STARTCHANNELING',
@@ -2004,7 +2065,7 @@ for k, v in pairs({ "PLANTREGISTRY_RESEARCH",
 		rpc = custom_rpc(v)
 	}
 end
-for k, v in pairs({ 'DISMANTLE_POCKETWATCH', "FEED", "COOK", "SEW", "UPGRADE" }) do --控制器rpc
+for k, v in pairs({ 'DISMANTLE_POCKETWATCH', "COOK", "SEW", "UPGRADE" }) do --控制器rpc
 	allowed_actions[v] = allowed_actions[v] or {
 		rpc = function(act)
 			act.self:SendControllerRPCSafely(ACTIONS[v].code, act.item, act.target, ACTIONS[v].mod_name)
@@ -2338,7 +2399,7 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
 	local activeitem = INV_util:GetActiveItem()
 	--author_print(activeitem, mouse_item)
 	if mouse_item and (not activeitem or activeitem ~= mouse_item) then --这里有时候进不来？？
-		local a = canusecontroller(pos, mouse_item, target, actionid)   --byd
+		local a = canusecontroller(pos, mouse_item, target, actionid) --byd
 		author_print('return3:', mouse_item)
 		return a,
 			a and a.action and a.action.id and allowed_actions[a.action.id] or
@@ -2357,10 +2418,10 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
 	local lmb, rmb = playeractionpicker:DoGetMouseActions(pos, target)
 	--author_print(target, lmb, rmb)
 	if rightclick ~= false then --这里是排队论选择的时候左键或者右键
-		if rmb then             --必须在allowed_actions这个表里面的动作
+		if rmb then          --必须在allowed_actions这个表里面的动作
 			local rmbacttab = allowed_actions[rmb.action.id]
 			if rmbacttab and ENT_util:FnOrNum(rmbacttab.isleftclick, target) ~= true then
-				if not actionid or actionid == rmb.action.id then                        --actionid为传入的动作id，必须是没传入或者传入的和获取的相同
+				if not actionid or actionid == rmb.action.id then         --actionid为传入的动作id，必须是没传入或者传入的和获取的相同
 					if not rmbacttab.canselect or rmbacttab.canselect(target, self) then --canselect没有或者满足这个函数才能选择
 						return rmb, rmbacttab
 					end
@@ -2530,8 +2591,8 @@ end
 
 -- 框选器(是否右键)
 function ActionQueuer:SelectionBox(rightclick)
-	local previous_ents = {}                              -- 先前的实体表
-	local started_selection = false                       -- 开始选择标志位
+	local previous_ents = {}                           -- 先前的实体表
+	local started_selection = false                    -- 开始选择标志位
 	local start_x, start_y = self.screen_x, self.screen_y -- 开始选择的位置
 	local start_pos = GetWorldPosition(start_x, start_y)
 	self.update_selection = function()
@@ -2556,14 +2617,14 @@ function ActionQueuer:SelectionBox(rightclick)
 			GetWorldPosition(xmax, ymax), GetWorldPosition(xmax, ymin)
 		local center = GetWorldPosition((xmin + xmax) / 2, (ymin + ymax) / 2) -- 窗口实际在世界的位置
 		local range = math.sqrt(math.max(center:DistSq(self.TL), center:DistSq(self.BL), center:DistSq(self.TR),
-			center:DistSq(self.BR)))                                          -- 两点间的距离公式
+			center:DistSq(self.BR)))                                    -- 两点间的距离公式
 		local current_ents = {}
 		for _, v in pairs(TheSim:FindEntities(center.x, 0, center.z, range, nil, unselectable_tags)) do
 			local ent = v and v.client_forward_target or v
 			if ENT_util:IsValid(ent) then
 				local pos = ent:GetPosition()
 				if pos and isPointInSide(pos, { self.TL, self.TR, self.BR, self.BL }) then -- 实体位置在框选范围内
-					if not self:IsSelectedEntity(ent) and not previous_ents[ent] then      -- 不是已选实体 且 不在之前的实体表中
+					if not self:IsSelectedEntity(ent) and not previous_ents[ent] then -- 不是已选实体 且 不在之前的实体表中
 						local act, acttab = self:GetAction(ent, nil, rightclick)
 						if act and acttab and not ENT_util:FnOrNum(acttab.dontselectbyselectbox, ent, rightclick) then
 							self:SelectEntity(ent, act.action.id, nil, nil, rightclick)
@@ -2574,7 +2635,7 @@ function ActionQueuer:SelectionBox(rightclick)
 			end
 		end
 		for ent in pairs(previous_ents) do -- 遍历之前的实体表
-			if not current_ents[ent] then  -- 如果之前的表中没有现在的量，则取消选中
+			if not current_ents[ent] then -- 如果之前的表中没有现在的量，则取消选中
 				self:DeselectEntity(ent)
 			end
 		end
@@ -2748,9 +2809,9 @@ function ActionQueuer:CherryPick(rightclick)
 		local ent = v and v.client_forward_target or v
 		if ENT_util:IsValid(ent) then
 			--这说明鼠标下吗有实体动作吗，那么就不会执行我的记录位置的动作pos_point_act
-			local act = self:GetAction(ent, nil, rightclick)     -- 但是Cherrypick是多次执行,第一次执行会给给这次点击赋值一个表,存入相关信息,第二次时间差满足才进入双击流程
+			local act = self:GetAction(ent, nil, rightclick) -- 但是Cherrypick是多次执行,第一次执行会给给这次点击赋值一个表,存入相关信息,第二次时间差满足才进入双击流程
 			if act then
-				flag = false                                     -- 鼠标下的实体如果有合法的动作
+				flag = false                         -- 鼠标下的实体如果有合法的动作
 				self:ToggleEntitySelection(ent, act, rightclick) -- 切换实体选择状态
 
 				-- -- Original CherryPick code
@@ -2785,9 +2846,9 @@ function ActionQueuer:CherryPick(rightclick)
 		self.posaction:AddTag("NOCLICK")
 		posaction_postab = {}
 	end
-	if flag == true then                                 --鼠标下无实体动作，进入记录位置动作流程pos_point_act
+	if flag == true then                           --鼠标下无实体动作，进入记录位置动作流程pos_point_act
 		local ent = TheInput:GetWorldEntityUnderMouse()
-		self.posaction.ent = ent                         --记录位置动作下的实体
+		self.posaction.ent = ent                   --记录位置动作下的实体
 		local act = self:GetAction(nil, nil, rightclick) --记录动作
 		if act and act.action.id and allowed_actions[act.action.id] and allowed_actions[act.action.id].isposaction then
 			local pos = ent and ent:GetPosition() or TheInput:GetWorldPosition()
@@ -2858,12 +2919,12 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
 	if self.clicked then
 		self.clicked = false
 		if not self.action_thread then
-			if self:IsWalkButtonDown() then      -- 按下移动键打断
+			if self:IsWalkButtonDown() then -- 按下移动键打断
 				self:ClearSelectedEntities()
 			elseif next(self.selected_ents) then -- 有选择的实体
 				self:MovementPredict()
-				self:ApplyToSelection()          -- 选择器执行
-			elseif rightclick then               -- 未选择实体实体时进入部署流程
+				self:ApplyToSelection() -- 选择器执行
+			elseif rightclick then      -- 未选择实体实体时进入部署流程
 				local active_item = INV_util:GetActiveItem()
 				if active_item then
 					if easy_stack[active_item.prefab] then -- 种植小木牌的
@@ -2880,11 +2941,11 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
 						if not self.TL then return end
 						local cx, cz = (self.TL.x + self.BR.x) / 2,
 							(self.TR.z + self.BL.z) /
-							2                                                                            -- Get SelectionBox() center coords
-						if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then            -- if center = soil tile
+							2                                                       -- Get SelectionBox() center coords
+						if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then -- if center = soil tile
 							self:DeployToSelection(self.WormwoodPlantAtPoint, farm_spacing, active_item) -- Snap to farm grid
 						else
-							self:DeployToSelection(self.DeployActiveItem, farm_spacing, active_item)     -- Plant normally
+							self:DeployToSelection(self.DeployActiveItem, farm_spacing, active_item) -- Plant normally
 						end
 						return
 					end
@@ -2962,8 +3023,28 @@ function ActionQueuer:GetNewActiveItem(prefab)
 	end
 end
 
+local function IsNearOther(other, pt, min_spacing_sq, min_spacing)
+	--FindEntities range check is <=, but we want <
+	if min_spacing_sq <= 0 and other:HasTag("structure") then
+		--special case (e.g. minisigns use DEPLOYSPACING.NONE)
+		if other.deploy_extra_spacing then
+			min_spacing_sq = other.deploy_extra_spacing * other.deploy_extra_spacing
+		end
+	elseif other.deploy_smart_radius then
+		min_spacing = other.deploy_smart_radius + (min_spacing or math.sqrt(min_spacing_sq)) / 2
+		min_spacing_sq = min_spacing * min_spacing
+	elseif other.deploy_extra_spacing then
+		min_spacing_sq = math.max(other.deploy_extra_spacing * other.deploy_extra_spacing, min_spacing_sq)
+	elseif other.replica.inventoryitem then
+		min_spacing = other:GetPhysicsRadius(0.5) + (min_spacing or math.sqrt(min_spacing_sq)) / 2
+		min_spacing_sq = math.min(min_spacing * min_spacing, min_spacing_sq)
+	end
+	return other:GetDistanceSqToPoint(pt) < min_spacing_sq
+end
+local DEPLOY_IGNORE_TAGS = { "NOBLOCK", "player", "FX", "INLIMBO", "DECOR", "walkableplatform", "walkableperipheral",
+	"isdead" }
 -- 部署
-function ActionQueuer:DeployActiveItem(pos, item)
+function ActionQueuer:DeployActiveItem(pos, item, skip)
 	local active_item = INV_util:GetActiveItem() or self:GetNewActiveItem(item.prefab)
 	if not active_item then return false end
 	local inventoryitem = active_item.replica.inventoryitem
@@ -2981,6 +3062,36 @@ function ActionQueuer:DeployActiveItem(pos, item)
 					self:SendActionAndWait(act, true)
 				end
 			end
+		end
+	elseif not skip then --被挡住 无法部署了 尝试捡起来
+		local x, y, z = pos:Get()
+		local min_spacing = active_item.replica.inventoryitem ~= nil and
+			active_item.replica.inventoryitem:DeploySpacingRadius() or
+			DEPLOYSPACING_RADIUS[DEPLOYSPACING.DEFAULT]
+		local min_spacing_sq = min_spacing ~= nil and min_spacing * min_spacing or nil
+		near_other_fn = near_other_fn or IsNearOther
+		local work = false
+		for _, v in ipairs(TheSim:FindEntities(x, 0, z, min_spacing + 1, nil, DEPLOY_IGNORE_TAGS)) do
+			if v ~= active_item and
+				v.entity:IsVisible() and
+				v.components.placer == nil and
+				v.entity:GetParent() == nil and
+				v.replica.inventoryitem
+				and v.replica.inventoryitem:CanBePickedUp(ThePlayer)
+			then
+				local v_min_spacing_sq = min_spacing_sq
+				if near_other_fn(v, pos, v_min_spacing_sq, min_spacing) then
+					if not work then
+						SendRPCToServer(RPC.ReturnActiveItem, nil, nil, nil)
+					end
+					local act = BufferedAction(self.inst, v, ACTIONS.PICKUP)
+					self:SendActionAndWait(act)
+					work = true
+				end
+			end
+		end
+		if work then
+			self:DeployActiveItem(pos, item, true)
 		end
 	end
 	return true
@@ -3005,7 +3116,7 @@ function ActionQueuer:TillAtPoint(pos, item)
 	if not INV_util:GetHandsEquip() then return false end
 	if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- 201221 null: Fix for when objects block Tilling
 		local act = BufferedAction(self.inst, nil, ACTIONS.TILL, item, pos)
-		self:SendActionAndWait(act, false)           -- false = RPC.LeftClick, avoids Geometric Placement mod's RPC.RightClick snap overrides
+		self:SendActionAndWait(act, false)        -- false = RPC.LeftClick, avoids Geometric Placement mod's RPC.RightClick snap overrides
 	end
 	return true
 end
@@ -3017,7 +3128,7 @@ function ActionQueuer:WormwoodPlantAtPoint(pos, item)
 	if not INV_util:GetActiveItem() then return false end
 	if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- Do not plant outside the farm soil tile in this scenario
 		local act = BufferedAction(self.inst, nil, ACTIONS.DEPLOY, item, pos)
-		self:SendActionAndWait(act, false)           -- 210127 null: false avoids Geometric Placement mod's RPC.RightClick snap overrides
+		self:SendActionAndWait(act, false)        -- 210127 null: false avoids Geometric Placement mod's RPC.RightClick snap overrides
 	end
 	return true
 end
@@ -3043,10 +3154,10 @@ end
 function ActionQueuer:GetClosestTarget()
 	local mindistsq, target
 	local player_pos = self.inst:GetPosition()
-	for ent in pairs(self.selected_ents) do                        -- 遍历已选实体
+	for ent in pairs(self.selected_ents) do               -- 遍历已选实体
 		if ENT_util:IsValid(ent) then
 			local curdistsq = player_pos:DistSq(ent:GetPosition()) -- 点距
-			if not mindistsq or curdistsq < mindistsq then         -- 哪个点距小记录哪个
+			if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 				mindistsq = curdistsq
 				target = ent
 			end
@@ -3106,7 +3217,7 @@ function ActionQueuer:MakeTool(toolfn, oldhandtool, hasclickequip)
 	if not MOD_util:GetMOption("aq_automaketool", default_aq_automaketool) then return false end
 	local maketool
 	for recname, rec in pairs(AllRecipes) do
-		if toolfn(recname, oldhandtool) and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
+		if oldhandtool and (oldhandtool.prefab == (rec.product or recname)) and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
 			ThePlayer.replica.builder:HasIngredients(recname) then
 			SendRPCToServer(RPC.MakeRecipeFromMenu, rec.rpc_id)
 			maketool = true
@@ -3119,6 +3230,23 @@ function ActionQueuer:MakeTool(toolfn, oldhandtool, hasclickequip)
 			break
 		end
 	end
+	--[[if not maketool then
+		for recname, rec in pairs(AllRecipes) do
+			if toolfn(recname, oldhandtool) and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
+				ThePlayer.replica.builder:HasIngredients(recname) then
+				SendRPCToServer(RPC.MakeRecipeFromMenu, rec.rpc_id)
+				maketool = true
+				MOD_util:repeatsleepuntil(function(ticks)
+					return ticks > 10 and INV_util:FindInInv(nil, nil, nil, function(inst)
+							return toolfn(inst, oldhandtool)
+						end) or hasclickequip and
+						ticks > 10 and not IsBusy()
+				end, 1000)
+				break
+			end
+		end
+	end]]
+
 	return maketool
 end
 
@@ -3128,12 +3256,34 @@ function ActionQueuer:IsHoldingItem(item, all)
 		ThePlayer.replica.inventory:IsHolding(item, all)
 end
 
+local ban_list = {
+	lureplant_rod = true,
+}
+function ActionQueuer:ShouldEquipSpeeditem()
+	local item = INV_util:GetHandsEquip()
+	if item and item:HasTag("waterproofer") and TheWorld.state.israining then
+		return false
+	end
+	if item and item:HasTag("light") then
+		return false
+	end
+	if item and ban_list[item.prefab] then
+		return false
+	end
+	--[[if item.replica.inventoryitem and item.replica.inventoryitem:GetWalkSpeedMult() > 1 then
+		return false
+	end]]
+	return true
+end
+
 -- 排队论精髓：动作线程
 function ActionQueuer:ApplyToSelection(notclearbuffer)
 	self.action_thread = StartThread(function()
 		if not notclearbuffer then
 			self.inst:ClearBufferedAction()
 		end
+		self.mem = {}
+
 		--这个可能会更新，代表的需要交互的物品，不一定是拿在鼠标上的，可能是被返回到库存里面的。
 		local update_item = INV_util:GetActiveItem()
 		--这个在后续一直不会变
@@ -3181,19 +3331,29 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 				end
 				--判断是否应该切手杖
 				local speeditem
-				if MOD_util:GetMOption("aq_equipcane", default_aq_equipcane) and ENT_util:FnOrNum(acttab.equipspeeditem, { target = target, item = update_item, time = 0, self = self })
+				if self:ShouldEquipSpeeditem() and MOD_util:GetMOption("aq_equipcane", default_aq_equipcane)
+					and ENT_util:FnOrNum(acttab.equipspeeditem, { target = target, item = update_item, time = 0, self = self })
 					and not ENT_util:isOnWater(ThePlayer) then
 					speeditem = self:HasAddSpeedEquipment()
 					if speeditem then
 						author_print('装备', speeditem)
 					end
 				end
+
 				--记录物品数目 后面判断dirty
 				local laststacknum = ENT_util:GetStacksize(update_item)
 
 				self.waiting_for_break = false
 				self.no_act_time = nil
 				while acttab do
+					do
+						if self.mem.not_unique_target == nil then
+							local num = GetTableSize(self.selected_ents)
+							if num > 1 then
+								self.mem.not_unique_target = true
+							end
+						end
+					end
 					--如果被玩家删除了就退出循环
 					if not self:IsSelectedEntity(target) then
 						author_print('break_by_delete_ent')
@@ -3201,23 +3361,25 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					end
 					--物品数目
 					local nowstacknum = ENT_util:GetStacksize(update_item)
-					local stacknumdirty
+					local lookfor_new_inv_item
 					--如果是控制器动作就更新物品update_item
 					if acttab.controllertable and not ENT_util:FnOrNum(acttab.controllertable.cancelcontroller,
 							{ target = target, item = update_item, time = 0, self = self }) and oldactive_item then
 						local function updatestacknumdirty()
-							stacknumdirty = true
+							lookfor_new_inv_item = true
 							return true
+						end
+						local active = ThePlayer.replica.inventory:GetActiveItem()
+						local function checkitem(inst)
+							if inst.prefab == update_item.prefab and (not acttab.selectitemfn or acttab.selectitemfn(inst))
+								or (acttab.selectitemfn_force and acttab.selectitemfn_force({ item = inst, oldprefab = update_item.prefab })) then
+								return true
+							end
 						end
 						update_item = ActionQueuer:IsHoldingItem(update_item, true) and
 							(not acttab.selectitemfn or acttab.selectitemfn(update_item)) and update_item or
 							update_item and updatestacknumdirty() and
-							INV_util:FindInInv(nil, nil, nil, function(inst)
-								if inst.prefab == update_item.prefab and (not acttab.selectitemfn or acttab.selectitemfn(inst))
-									or (acttab.selectitemfn_force and acttab.selectitemfn_force({ item = inst, oldprefab = update_item.prefab })) then
-									return true
-								end
-							end)
+							INV_util:FindInInv(nil, nil, nil, checkitem) or active and checkitem(active) and active
 						if not update_item then
 							author_print('break_by_noitem')
 							break
@@ -3228,9 +3390,15 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 						author_print('break_by_notvalident')
 						break
 					end
+					--stacknumdirty break测试
+					local stacknumdirty = lookfor_new_inv_item or (laststacknum ~= nowstacknum)
+					if stacknumdirty and acttab.stacknumdirtyezsylisten and self:HaveAnotherSelectedEnt(target) then
+						author_print('break_by_stacknumdirtyezsylisten')
+						break
+					end
 					--如果满足breakfn 退出循环
 					if acttab.breakfn and acttab.breakfn({ target = target, item = update_item, time = time, self = self,
-							stacknumdirty = stacknumdirty or (laststacknum ~= nowstacknum),
+							stacknumdirty = stacknumdirty,
 							busytime = busytime, }) then
 						author_print('break_by_breakfn')
 						break
@@ -3392,6 +3560,9 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					end
 				end
 			end
+			if acttab and acttab.exit_loop_fn then
+				acttab.exit_loop_fn({ target = target, item = update_item, time = time, self = self })
+			end
 			Sleep(0)
 		end
 		self:ClearActionThread(self.endless_repeat)
@@ -3437,9 +3608,9 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
 	elseif snap_farm then
 		-- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
 		local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-		if tilecenter.x % 4 == 0 then                                                        -- if center of tile is divisible by 4, then it's a medium/huge server
+		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
 			farm3x3_offset =
-				farm_spacing                                                                 -- adjust offset for medium/huge servers for 3x3 grid
+				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
 		end
 		start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
 			math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
@@ -3459,6 +3630,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
 
 	self.action_thread = StartThread(function()
 		self.inst:ClearBufferedAction()
+
 		while self.inst:IsValid() do
 			cur_pos.x = start_x + spacing_x * count.x
 			cur_pos.z = start_z + spacing_z * count.z
@@ -3587,9 +3759,9 @@ function ActionQueuer:selectallpos(actid, spacing, item)
 	elseif actid == 'TILL' then
 		-- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
 		local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-		if tilecenter.x % 4 == 0 then                                                        -- if center of tile is divisible by 4, then it's a medium/huge server
+		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
 			farm3x3_offset =
-				farm_spacing                                                                 -- adjust offset for medium/huge servers for 3x3 grid
+				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
 		end
 		start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
 			math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset

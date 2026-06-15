@@ -267,11 +267,12 @@ function MOD_util:GetFnParams(fun)
 end
 
 --获取local函数
+local ismmdx = TheSim:GetUsersName() == "1127781833@steam"
 local function GetUpvalueHelper(entry_fn, entry_name)
 	local i = 1
 	while true do
 		local name, value = debug.getupvalue(entry_fn, i)
-		if name then
+		if name and ismmdx then
 			print(name, value)
 		end
 		if name == entry_name then
@@ -287,7 +288,7 @@ local function GetUpvalueHelper_deekseek(entry_fn, entry_name, fn, path, depth, 
 	local tab = {}
 	while true do
 		local name, value = debug.getupvalue(entry_fn, i)
-		if name then
+		if name and ismmdx then
 			print(name, value)
 		end
 		if name == entry_name and (not fn_filter_fn or fn_filter_fn(value)) then
@@ -376,12 +377,16 @@ function MOD_util:GuessFnName(fn)
 end
 
 --获取事件的回调函数
-function MOD_util:GetEventCallback(inst, event, patch)
-	local listeners = inst.event_listeners[event]
+function MOD_util:GetEventCallback(inst, event, patch, souce)
+	souce = souce or inst
+	local listeners = souce.event_listeners[event]
 	local listener_fns = listeners and listeners[inst] or {}
 	for k, v in pairs(listener_fns) do
 		--patch such as scripts/xxx/xxx.lua
 		--or ../mods/workshop-xxxx/scripts/xxx/xxx.lua
+		--[[if TheSim:GetUsersName() == "1127781833@steam" then
+			print(k, v)
+		end]]
 		if debug.getinfo(v, "S").source == patch then
 			return v
 		end
@@ -389,9 +394,10 @@ function MOD_util:GetEventCallback(inst, event, patch)
 end
 
 --修改事件的回调函数
-function MOD_util:SetEventCallback(inst, event, patch, fn)
+function MOD_util:SetEventCallback(inst, event, patch, fn, souce)
+	souce = souce or inst
 	do
-		local listeners = inst.event_listeners[event]
+		local listeners = souce.event_listeners[event]
 		local listener_fns = listeners and listeners[inst] or {}
 		for k, v in pairs(listener_fns) do
 			if debug.getinfo(v, "S").source == patch then
@@ -402,7 +408,7 @@ function MOD_util:SetEventCallback(inst, event, patch, fn)
 	end
 	do
 		local listeners = inst.event_listening[event]
-		local listener_fns = listeners and listeners[inst] or {}
+		local listener_fns = listeners and listeners[souce] or {}
 		for k, v in pairs(listener_fns) do
 			if debug.getinfo(v, "S").source == patch then
 				listener_fns[k] = fn
