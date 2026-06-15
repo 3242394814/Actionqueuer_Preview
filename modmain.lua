@@ -1916,8 +1916,12 @@ allowed_actions = {
 				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 3
 				for i = 1, num do
 					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
-					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
 				end
+				act.target:DoTaskInTime(2 * FRAMES, function()
+					for i = 1, num do
+						SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
+					end
+				end)
 			end
 		end,
 	},
