@@ -255,11 +255,11 @@ allowed_actions = {
 			if DealWx78_spinact(act, ACTIONS.CHOP.code) then
 				return
 			end
-			if target and target:HasTag("rock_tree") then
+			if target and target:HasTag("rock_tree") then --tree_rock1
 				local anim = ENT_util:GetAnimation(target)
 				if anim and (anim:find('fall_pre') or anim:find("fall_miss") or anim:find("fall_bounce")) then
-					local pos = POS_util:CalculateAimPos(ThePlayer, target, 0,
-						(target:HasTag("tree_rock1") and -3 or -4) - 0.5)
+					local pos = POS_util:CalculateAimPos(target, ThePlayer, 0,
+						(target:HasTag("tree_rock1") and 3 or 4) + 0.5)
 					local speeditem
 					speeditem = ActionQueuer:HasAddSpeedEquipment()
 					ActionQueuer:EquipItem(speeditem)
@@ -2557,17 +2557,13 @@ function ActionQueuer:HasAddSpeedEquipment()
 	local maxspeed, speeditem, pos, backpack
 	maxspeed = 0
 	local function check(k, v)
-		if v.prefab then
-			MOD_util:MasterDo(function()
-				local a = SpawnPrefab(v.prefab)
-				local speed = a.components.equippable and a.components.equippable.walkspeedmult
-				local slot = a.components.equippable and a.components.equippable.equipslot
+		if v.prefab and v.replica.inventoryitem then
+			local speed = v.replica.inventoryitem:GetWalkSpeedMult()
+			local slot = v.replica.equippable and v.replica.equippable:EquipSlot()
 				if speed and speed > maxspeed and speed > 1 and slot == EQUIPSLOTS.HANDS then
 					maxspeed = speed
 					speeditem, pos = v, k
 				end
-				a:Remove()
-			end)
 		end
 	end
 	for k, v in pairs(ThePlayer.replica.inventory:GetEquips()) do
@@ -3193,14 +3189,31 @@ function ActionQueuer:SelectEndlessEnt(old_mouse)
 			return
 		end
 	end
+	self.endless_repeat_target.all_prefab = self.endless_repeat_target.all_prefab or {}
+	for ent in pairs(self.selected_ents) do -- 遍历已选实体
+		if ENT_util:IsValid(ent) and not self.endless_repeat_target.all_prefab[ent.prefab] then
+			local data = {}
+			self.endless_repeat_target.all_prefab[ent.prefab] = data
+			local a = ent
+			data.prefab = a and a.prefab
+			data.actid = self.selected_ents[a].id
+			data.item = self.selected_ents[a].item
+			data.specialtag = self.selected_ents[a].specialtag
+			data.rightclick = self.selected_ents[a].rightclick
+		end
+	end
+
 	local entity = TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 20)
 	for k, v in pairs(self.selected_ents) do
 		if k and ENT_util:IsValid(k) and distsq(ThePlayer:GetPosition(), k:GetPosition()) > 40 * 40 then
 			self:DeselectEntity(k)
 		end
 	end
-	local endlesstab = endlesstable[self.endless_repeat_target.prefab]
+	local need_prefab = self.endless_repeat_target.prefab
+	local all_prefab = self.endless_repeat_target.all_prefab
+	local endlesstab = endlesstable[need_prefab]
 	for k, v in pairs(entity) do
+		if not self:IsSelectedEntity(v) then
 		local ent = v and v.client_forward_target or v
 		if endlesstab then
 			if endlesstab.selectfn and endlesstab.selectfn(ent) then
@@ -3209,10 +3222,22 @@ function ActionQueuer:SelectEndlessEnt(old_mouse)
 					self.endless_repeat_target.specialtag
 					, self.endless_repeat_target.rightclick)
 			end
-		elseif not endlesstab and ent and ENT_util:IsValid(ent) and ent.prefab == self.endless_repeat_target.prefab and self:GetAction(ent, self.endless_repeat_target.actid, nil, old_mouse) then
+			elseif not endlesstab and ent and ENT_util:IsValid(ent) then
+				if ent.prefab == need_prefab then
+					if self:GetAction(ent, self.endless_repeat_target.actid, nil, old_mouse) then
 			self:SelectEntity(ent, self.endless_repeat_target.actid, self.endless_repeat_target.item,
 				self.endless_repeat_target.specialtag
 				, self.endless_repeat_target.rightclick)
+					end
+				elseif all_prefab[ent.prefab] then
+					local data = all_prefab[ent.prefab]
+					if self:GetAction(ent, data.actid, nil, old_mouse) then
+						self:SelectEntity(ent, data.actid, data.item,
+							data.specialtag
+							, data.rightclick)
+					end
+				end
+			end
 		end
 	end
 end
