@@ -2494,7 +2494,7 @@ function ActionQueuer:collectActions(inst, actiontype, actionid, params)
 	local useitem = inst
 	if not useitem then return end
 	local actions = {}
-	local doer = params.self and params.self.inst
+	local doer = ThePlayer
 	local target = params.target
 	local pos = params.pos
 	local right = params.right
