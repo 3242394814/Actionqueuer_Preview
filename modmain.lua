@@ -78,7 +78,7 @@ local custom_selectitemfn_force = function(tab)
 end
 local custom_addtimefn = function(rangerange)
 	return function(act)
-		return distsq(act.target:GetPosition(), act.self.inst:GetPosition()) < rangerange
+		return distsq(act.target:GetPosition(), ActionQueuer.inst:GetPosition()) < rangerange
 	end
 end
 local function IsBusy(doer)
@@ -289,8 +289,8 @@ allowed_actions = {
 			return self.autocollect > 2
 		end,
 		reselectfn = function(act)
-			if act.target and act.self.autocollect > 1 and act.self:GetAction(act.target, 'DIG') then
-				act.self:SelectEntity(act.target, 'DIG', nil, nil, true)
+			if act.target and (ActionQueuer.autocollect == 2 or ActionQueuer.autocollect == 3) and ActionQueuer:GetAction(act.target, 'DIG') then
+				ActionQueuer:SelectEntity(act.target, 'DIG', nil, nil, true)
 			end
 		end,
 	},
@@ -343,14 +343,14 @@ allowed_actions = {
 			if act.target and act.target.prefab == 'spiderhole' then
 				for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 4, nil)) do
 					if ent.prefab == "spiderhole_rock" then
-						act.self:SelectEntity(ent, 'MINE')
+						ActionQueuer:SelectEntity(ent, 'MINE')
 					end
 				end
 			end
 			if act.target and act.target.prefab == 'rock_ice' then
 				for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 4, nil)) do
 					if ent.prefab == "ice" then
-						act.self:SelectEntity(ent, 'PICKUP')
+						ActionQueuer:SelectEntity(ent, 'PICKUP')
 					end
 				end
 			end
@@ -379,7 +379,7 @@ allowed_actions = {
 			if act.target and act.target.prefab == 'ancient_altar' then
 				for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 4, nil)) do
 					if ent.prefab == "ancient_altar_broken" then
-						act.self:SelectEntity(ent, 'HAMMER', nil, nil, true)
+						ActionQueuer:SelectEntity(ent, 'HAMMER', nil, nil, true)
 					end
 				end
 			end
@@ -490,7 +490,7 @@ allowed_actions = {
 				SendRPCToServer(RPC.ControllerUseItemOnSelfFromInvTile, ACTIONS.HEAL.code, act.item)
 			else
 				if not IsBusy() or act.time < 0.1 then
-					act.self:SendControllerRPCSafely(ACTIONS.HEAL.code, act.item, act.target,
+					ActionQueuer:SendControllerRPCSafely(ACTIONS.HEAL.code, act.item, act.target,
 						ACTIONS.HEAL.mod_name)
 				end
 			end
@@ -501,14 +501,14 @@ allowed_actions = {
 		},
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "USEITEM", "HEAL", act)
+			return ActionQueuer:collectActions(act.item, "USEITEM", "HEAL", act)
 		end,
 	},
 	["FEEDPLAYER"] = {
 		isleftclick = false,
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then
-				act.self:SendControllerRPCSafely(ACTIONS.FEEDPLAYER.code, act.item, act.target,
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.FEEDPLAYER.code, act.item, act.target,
 					ACTIONS.FEEDPLAYER.mod_name)
 			end
 		end,
@@ -518,7 +518,7 @@ allowed_actions = {
 		},
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "USEITEM", "FEEDPLAYER", act)
+			return ActionQueuer:collectActions(act.item, "USEITEM", "FEEDPLAYER", act)
 		end,
 	},
 	["EAT"] = {
@@ -528,7 +528,7 @@ allowed_actions = {
 		sleeptime = 0.1,
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "INVENTORY", "EAT", act)
+			return ActionQueuer:collectActions(act.item, "INVENTORY", "EAT", act)
 		end,
 		controllertable = {},
 	},
@@ -551,11 +551,11 @@ allowed_actions = {
 			if act.time < 0.1 then
 				SendRPCToServer(RPC.LeftClick, ACTIONS.PICKUP.code, act.target:GetPosition().x,
 					act.target:GetPosition().z, act.target)
-			elseif act.self.inst:HasTag("working") then
+			elseif ActionQueuer.inst:HasTag("working") then
 				SendRPCToServer(RPC.LeftClick, ACTIONS.PICKUP.code, act.target:GetPosition().x,
 					act.target:GetPosition().z, act.target)
 				--ActionButton is safety,will not pickup twice
-			elseif (act.target and math.sqrt(distsq(act.target:GetPosition(), act.self.inst:GetPosition())) < 5) then
+			elseif (act.target and math.sqrt(distsq(act.target:GetPosition(), ActionQueuer.inst:GetPosition())) < 5) then
 				SendRPCToServer(RPC.ActionButton, ACTIONS.PICKUP.code, act.target)
 			else
 				SendRPCToServer(RPC.LeftClick, ACTIONS.PICKUP.code, act.target:GetPosition().x,
@@ -563,25 +563,25 @@ allowed_actions = {
 			end
 		end,
 		breakfn = function(act)
-			local selecttable = act.self and act.self:GetSelectedEnt(act.target)
+			local selecttable = ActionQueuer and ActionQueuer:GetSelectedEnt(act.target)
 			--rightclick will lead fast break for fast pickup
 			if selecttable and selecttable.rightclick then
-				if act.time > 0.1 and (act.self.inst.AnimState:IsCurrentAnimation("pickup_pst"))
-					and act.self:HaveAnotherSelectedEnt(act.target) then
+				if act.time > 0.1 and (ActionQueuer.inst.AnimState:IsCurrentAnimation("pickup_pst"))
+					and ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 					return true
 				end
 			end
 		end,
 		noactfn = function(act)
-			act.self:DeselectEntity(act.target)
+			ActionQueuer:DeselectEntity(act.target)
 			if act.target and act.target.replica.stackable then
-				act.self:SelectEntity(act.target, 'COMBINESTACK')
+				ActionQueuer:SelectEntity(act.target, 'COMBINESTACK')
 			end
 		end,
 		reselectfn = function(act)
 			--这里的逻辑是对于有deploypos的实体，捡起来后立刻部署在对应位置。用于发电机？
 			if act.target and act.target.deploypos then
-				if not act.self:HaveAnotherSelectedEnt(act.target) then
+				if not ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 					local pos = act.target.deploypos
 					local x, z = pos.x, pos.z
 					--ThePlayer:DoTaskInTime(0.5, function()
@@ -635,7 +635,7 @@ allowed_actions = {
 		end,
 		breakfn = function(act)
 			if act.target and act.target.prefab == 'junk_pile' and
-				act.self.selected_ents[act.target].specialtag ~= 'destory_low_pile' then
+				ActionQueuer.selected_ents[act.target].specialtag ~= 'destory_low_pile' then
 				return act.target.AnimState:IsCurrentAnimation("idlelow")
 					or act.target.AnimState:IsCurrentAnimation("looplow") --looplow
 			end
@@ -646,7 +646,7 @@ allowed_actions = {
 		equipspeeditem = true,
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS.PLANTSOIL.code, act.item, act.target,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS.PLANTSOIL.code, act.item, act.target,
 				ACTIONS.PLANTSOIL.mod_name)
 		end,
 		controllertable = {},
@@ -655,7 +655,7 @@ allowed_actions = {
 		equipspeeditem = true,
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS.PLANTSOIL_LEGION.code, act.item,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS.PLANTSOIL_LEGION.code, act.item,
 				act.target,
 				ACTIONS.PLANTSOIL_LEGION.mod_name)
 		end,
@@ -664,7 +664,7 @@ allowed_actions = {
 	["ERASE_PAPER"] = {
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS.ERASE_PAPER.code, act.item, act.target)
+			ActionQueuer:SendControllerRPCSafely(ACTIONS.ERASE_PAPER.code, act.item, act.target)
 		end,
 		controllertable = {},
 		notbreakfn = function(act)
@@ -693,11 +693,11 @@ allowed_actions = {
 		isleftclick = true,
 		rpc = function(act)
 			local nextpit
-			if act.self:HaveAnotherSelectedEnt(act.target) then
+			if ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 				nextpit = true
 			end
 			if not nextpit or not IsBusy() or act.time < 0.1 or act.time > 0.5 then
-				act.self:SendControllerRPCSafely(ACTIONS.ADDFUEL.code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.ADDFUEL.code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
@@ -708,7 +708,7 @@ allowed_actions = {
 					return true
 				end
 			end
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.stacknumdirty or act.time > 0.5
 			end)
 		end,
@@ -722,11 +722,11 @@ allowed_actions = {
 		isleftclick = true,
 		rpc = function(act) --acttab
 			local nextpit
-			if act.self:HaveAnotherSelectedEnt(act.target) then
+			if ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 				nextpit = true
 			end
 			if not nextpit or not IsBusy() or act.time < 0.1 or act.time > 0.5 then
-				act.self:SendControllerRPCSafely(ACTIONS.ADDWETFUEL.code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.ADDWETFUEL.code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
@@ -737,7 +737,7 @@ allowed_actions = {
 					return true
 				end
 			end
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.stacknumdirty or act.time > 0.5
 			end)
 		end,
@@ -756,14 +756,14 @@ allowed_actions = {
 					SendRPCToServer(RPC.ControllerActionButton, ACTIONS.HARVEST.code, act.target)
 				elseif act.target.AnimState:IsCurrentAnimation("idle_empty") then
 					local bird = INV_util:FindInInventory(nil, 'bird')
-					act.self:SendControllerRPCSafely(ACTIONS.STORE.code, bird, act.target)
+					ActionQueuer:SendControllerRPCSafely(ACTIONS.STORE.code, bird, act.target)
 				else
-					act.self:SendControllerRPCSafely(ACTIONS.GIVE.code, act.item, act.target)
+					ActionQueuer:SendControllerRPCSafely(ACTIONS.GIVE.code, act.item, act.target)
 				end
 				return
 			end
-			if act.time < 0.1 or not act.self.inst.AnimState:IsCurrentAnimation("give") then
-				act.self:SendControllerRPCSafely(ACTIONS.GIVE.code, act.item, act.target)
+			if act.time < 0.1 or not ActionQueuer.inst.AnimState:IsCurrentAnimation("give") then
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.GIVE.code, act.item, act.target)
 			end
 		end,
 		notbreakfn = function(act)
@@ -773,11 +773,11 @@ allowed_actions = {
 			end
 		end,
 		addbusytime = function(act)
-			return distsq(act.target:GetPosition(), act.self.inst:GetPosition()) < 3 * 3
+			return distsq(act.target:GetPosition(), ActionQueuer.inst:GetPosition()) < 3 * 3
 		end,
 		breakfn = function(act)
 			if act.target and act.target.prefab == 'mushroom_farm' then
-				return act.busytime > 1 and act.self:HaveAnotherSelectedEnt(act.target)
+				return act.busytime > 1 and ActionQueuer:HaveAnotherSelectedEnt(act.target)
 			end
 		end,
 		stacknumdirtyezsylisten = true,
@@ -849,7 +849,7 @@ allowed_actions = {
 			return true
 		end,
 		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time > 25 and ThePlayer.AnimState:IsCurrentAnimation("fishing_cast") or act.time > 50
 			end)
 		end,
@@ -860,14 +860,14 @@ allowed_actions = {
 		end,
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "INVENTORY", "MURDER", act)
+			return ActionQueuer:collectActions(act.item, "INVENTORY", "MURDER", act)
 		end,
 		controllertable = {},
 	},
 	LIGHT = {
 		rpc = function(act)
 			if act.time < 0.1 or not ThePlayer:HasTag('moving') then
-				act.self:SendControllerRPCSafely(ACTIONS.LIGHT.code, act.item
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.LIGHT.code, act.item
 					or INV_util:GetHandsEquip(), act.target)
 			end
 		end,
@@ -910,12 +910,12 @@ allowed_actions = {
 			end
 			if not acceptstacksize then
 				if not IsBusy() or act.time < 0.1 then
-					act.self:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
+					ActionQueuer:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
 				end
 				return
 			end
-			act.self:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
-			if not act.self:CanSeeTarget(act.target) then
+			ActionQueuer:SendControllerRPCSafely(ACTIONS.STORE.code, act.item, act.target)
+			if not ActionQueuer:CanSeeTarget(act.target) then
 				local num = act.target.replica.container and act.target.replica.container:GetNumSlots() or 10
 				for i = 1, num do
 					SendRPCToServer(RPC.MoveItemFromAllOfSlot, i, act.target)
@@ -955,11 +955,11 @@ allowed_actions = {
 		end,
 		addtimefn = function(act)
 			return act.target and act.target.replica and act.target.replica.container and
-				act.target.replica.container:IsOpenedBy(act.self.inst)
+				act.target.replica.container:IsOpenedBy(ActionQueuer.inst)
 		end,
 		controllercanselect = function(act)
 			act.right = false
-			return act.self:collectActions(act.item, "USEITEM", "STORE", act)
+			return ActionQueuer:collectActions(act.item, "USEITEM", "STORE", act)
 		end,
 	},
 	["ATTACK"] = {
@@ -1014,38 +1014,38 @@ allowed_actions = {
 	["SHAVE"] = {
 		isleftclick = true,
 		rpc = function(act)
-			if act.target == act.self.inst then
+			if act.target == ActionQueuer.inst then
 				SendRPCToServer(RPC.LeftClick, ACTIONS.SHAVE.code, act.target:GetPosition().x,
 					act.target:GetPosition().z,
 					act.target)
 			else
-				act.self:SendControllerRPCSafely(ACTIONS.SHAVE.code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.SHAVE.code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
 		controllercanselect = function(act)
 			act.right = false
-			return act.self:collectActions(act.item, "USEITEM", "SHAVE", act)
+			return ActionQueuer:collectActions(act.item, "USEITEM", "SHAVE", act)
 		end,
 		breakfn = function(act) --brushable
 			--[[ if act.target and act.target:HasTag('has_beard') then
                 return not act.target.AnimState:IsCurrentAnimation("sleep_loop")
             end ]] --spiderden
 			if act.target and act.target:HasTag('spiderden') then
-				local tag = act.self.selected_ents[act.target].specialtag
+				local tag = ActionQueuer.selected_ents[act.target].specialtag
 				if tag == 'destory_cocoon_small' then
 					return act.target.AnimState:IsCurrentAnimation("cocoon_dead")
 				else
 					return act.target.AnimState:IsCurrentAnimation("cocoon_small")
 						or act.target.AnimState:IsCurrentAnimation("shave_medium_to_small")
 				end
-			elseif act.target == act.self.inst then
+			elseif act.target == ActionQueuer.inst then
 				return (act.time - act.busytime) > 1
 				--inst:AddTag("has_beard")
 			elseif act.target:HasTag("beefalo") then
 				if act.target:HasTag('sleeping') then
 					return not act.target:HasTag("has_beard")
-				elseif act.self:HaveAnotherSelectedEnt(act.target) then
+				elseif ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 					return true
 				end
 			else
@@ -1054,17 +1054,17 @@ allowed_actions = {
 			end
 		end,
 		addbusytime = function(act)
-			return distsq(act.target:GetPosition(), act.self.inst:GetPosition()) < 16 and IsBusy()
+			return distsq(act.target:GetPosition(), ActionQueuer.inst:GetPosition()) < 16 and IsBusy()
 		end,
 		addtimefn = function(act)
-			return distsq(act.target:GetPosition(), act.self.inst:GetPosition()) < 16
+			return distsq(act.target:GetPosition(), ActionQueuer.inst:GetPosition()) < 16
 		end,
 		sleeptime = 0.1,
 	},
 	['MEDALPOLLUTE'] = {                  --勋章黑化血糖
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then --因为目标会瞬移所以不能一直发
-				act.self:SendControllerRPCSafely(ACTIONS.MEDALPOLLUTE.code, act.item,
+				ActionQueuer:SendControllerRPCSafely(ACTIONS.MEDALPOLLUTE.code, act.item,
 					act.target,
 					ACTIONS.MEDALPOLLUTE.mod_name)
 			end
@@ -1085,7 +1085,7 @@ allowed_actions = {
 			if act.target and act.target.prefab == 'dirtpile' then
 				for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 45, { 'dirtpile' })) do
 					if ent and ent.prefab == 'dirtpile' then
-						act.self:SelectEntity(ent, 'ACTIVATE')
+						ActionQueuer:SelectEntity(ent, 'ACTIVATE')
 						break
 					end
 				end
@@ -1093,7 +1093,7 @@ allowed_actions = {
 		end,
 		addtimefn = custom_addtimefn(4 * 4),
 		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time > 5
 			end)
 		end,
@@ -1108,7 +1108,7 @@ allowed_actions = {
 			end
 		end,
 		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time > 0.3
 			end)
 		end,
@@ -1133,12 +1133,12 @@ allowed_actions = {
 		breakfn = function(act)
 			local hand = INV_util:GetHandsEquip()
 			if hand and hand:HasTag('veryquickcast') then
-				return act.self.mem.not_unique_target and
-					act.time > 0.3 --[[act.self:HaveAnotherSelectedEnt(act.target, function()
+				return ActionQueuer.mem.not_unique_target and
+					act.time > 0.3 --[[ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 					return act.time > 0.3
 				end)]]
 			elseif hand and hand.prefab == 'staff_tornado' then
-				return act.self:HaveAnotherSelectedEnt(act.target, function()
+				return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 					return act.time > 0.4
 				end)
 			end
@@ -1161,9 +1161,9 @@ allowed_actions = {
 				local item = INV_util:FindInInventory(handprefab)
 				if item then
 					SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
-					act.self:SelectEntity(act.target, "CASTSPELL", nil, nil, true)
+					ActionQueuer:SelectEntity(act.target, "CASTSPELL", nil, nil, true)
 				else
-					act.self:DeselectEntity(act.target)
+					ActionQueuer:DeselectEntity(act.target)
 				end
 			end
 		end,
@@ -1179,10 +1179,10 @@ allowed_actions = {
 		end,
 		stacknumdirtyezsylisten = true,
 		breakfn = function(act)
-			return act.time > 3 --[[ act.self:HaveAnotherSelectedEnt(act.target, function()
+			return act.time > 3 --[[ ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time >  1 and not IsBusy()
-					and not act.self.inst:HasTag("moving")
-					and act.self.inst:HasTag("idle")
+					and not ActionQueuer.inst:HasTag("moving")
+					and ActionQueuer.inst:HasTag("idle")
 			end)]]
 		end,
 		addtimefn = custom_addtimefn(2 * 2)
@@ -1227,7 +1227,7 @@ allowed_actions = {
 		end,
 		breakfn = function(act)
 			if act.time > 0.5 and not IsBusy()
-				and not act.self.inst:HasTag("moving") then
+				and not ActionQueuer.inst:HasTag("moving") then
 				return true
 			end
 		end,
@@ -1246,7 +1246,7 @@ allowed_actions = {
 			--barren
 			if act.target and act.target:HasTag('barren') then
 			else
-				return act.self:HaveAnotherSelectedEnt(act.target, function()
+				return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 					return act.time > 0.3
 				end)
 			end
@@ -1256,7 +1256,7 @@ allowed_actions = {
 	['MAKECOOLDOWN'] = { --勋章红晶降温
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['MAKECOOLDOWN'].code, act.item,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS['MAKECOOLDOWN'].code, act.item,
 				act.target,
 				ACTIONS['MAKECOOLDOWN'].mod_name)
 		end,
@@ -1265,7 +1265,7 @@ allowed_actions = {
 	['MEDALPYTREDE'] = { --勋章py
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['MEDALPYTREDE'].code, act.item,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS['MEDALPYTREDE'].code, act.item,
 				act.target,
 				ACTIONS['MEDALPYTREDE'].mod_name)
 		end,
@@ -1275,7 +1275,7 @@ allowed_actions = {
 	['CHEFFLAVOUR'] = {
 		isleftclick = true,
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS['CHEFFLAVOUR'].code, act.item,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS['CHEFFLAVOUR'].code, act.item,
 				act.target,
 				ACTIONS['CHEFFLAVOUR'].mod_name)
 		end,
@@ -1290,7 +1290,7 @@ allowed_actions = {
 			end
 		end,
 		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time > 1
 			end)
 		end,
@@ -1316,21 +1316,29 @@ allowed_actions = {
 			else
 				SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
 			end
+			if distsq(ThePlayer:GetPosition(), act.target:GetPosition()) < 0.2 ^ 2 then
+				local pos = POS_util:CalculateAimPos(act.target:GetPosition(), ThePlayer:GetPosition(), 0, 2)
+				SendRPCToServer(RPC.LeftClick, ACTIONS.WALKTO.code, pos.x,
+					pos.z)
+				Sleep(0.5)
+				return
+			end
 			SendRPCToServer(RPC.LeftClick, ACTIONS.SCYTHE.code, act.target:GetPosition().x,
 				act.target:GetPosition().z,
 				act.target, nil, nil, ACTIONS.SCYTHE.canforce, ACTIONS.SCYTHE.mod_name)
 		end,
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "USEITEM", "SCYTHE", act)
+			return ActionQueuer:collectActions(act.item, "USEITEM", "SCYTHE", act)
 		end,
 		breakfn = function(act)
+			--target:HasOneOfTags(HARVESTABLE_PLANT_TARGET_TAGS)
 			return not act.target or not act.target:HasTag('pickable')
 		end,
 		reselectfn = function(act)
-			for k, v in pairs(act.self.selected_ents) do
-				if not k or not k:HasTag('pickable') then
-					act.self:DeselectEntity(k)
+			for k, v in pairs(ActionQueuer.selected_ents) do
+				if k and not k:HasTag('pickable') then
+					ActionQueuer:DeselectEntity(k)
 				end
 			end
 		end
@@ -1389,7 +1397,7 @@ allowed_actions = {
 			end
 		end,
 		reselectfn = function(act)
-			if act.target ~= act.self.posaction then return end
+			if act.target ~= ActionQueuer.posaction then return end
 			act.target.nutrient = nil
 			local mindistsq, target, lastaction
 			local player_pos = ThePlayer:GetPosition()
@@ -1409,13 +1417,13 @@ allowed_actions = {
 			end
 			if target then
 				act.target.Transform:SetPosition(target.x, 0, target.z)
-				act.self:SelectEntity(act.target, 'DEPLOY_TILEARRIVE', act.item, nil, true)
+				ActionQueuer:SelectEntity(act.target, 'DEPLOY_TILEARRIVE', act.item, nil, true)
 			end
 		end,
 		controllertable = {},
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "POINT", "DEPLOY_TILEARRIVE", act)
+			return ActionQueuer:collectActions(act.item, "POINT", "DEPLOY_TILEARRIVE", act)
 		end,
 	},
 	['TERRAFORM'] = { --挖地皮
@@ -1442,24 +1450,24 @@ allowed_actions = {
 			end
 		end,
 		reselectfn = function(act)
-			if act.target ~= act.self.posaction then return end
-			if act.self.posaction and act.self.posaction.endlessaction then --双击挖地皮流程
+			if act.target ~= ActionQueuer.posaction then return end
+			if ActionQueuer.posaction and ActionQueuer.posaction.endlessaction then --双击挖地皮流程
 				local ground = act.target and
 					act.target
-					.ground --来自act.self.posaction的ground
+					.ground --来自ActionQueuer.posaction的ground
 				local x, z = act.target:GetPosition().x, act.target:GetPosition().z
-				--act.self.posaction
+				--ActionQueuer.posaction
 				for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
 					if TheWorld.Map:GetTileAtPoint(x + v[1] * 4, 0, z + v[2] * 4) == ground then
 						act.target.Transform:SetPosition(x + v[1] * 4, 0, z + v[2] * 4)
-						act.self:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
+						ActionQueuer:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
 						return
 					end
 				end
 				for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
 					if TheWorld.Map:GetTileAtPoint(x + v[1] * 8, 0, z + v[2] * 8) == ground then
 						act.target.Transform:SetPosition(x + v[1] * 8, 0, z + v[2] * 8)
-						act.self:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
+						ActionQueuer:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
 						return
 					end
 				end
@@ -1484,7 +1492,7 @@ allowed_actions = {
 				end
 				if target then
 					act.target.Transform:SetPosition(target.x, 0, target.z)
-					act.self:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
+					ActionQueuer:SelectEntity(act.target, 'TERRAFORM', nil, nil, true)
 				end
 			end
 		end,
@@ -1537,13 +1545,13 @@ allowed_actions = {
 			end
 		end,
 		reselectfn = function(act)
-			if act.target ~= act.self.posaction then return end
-			if act.self.posaction and act.self.posaction.endlessaction then --双击挖地皮流程
+			if act.target ~= ActionQueuer.posaction then return end
+			if ActionQueuer.posaction and ActionQueuer.posaction.endlessaction then --双击挖地皮流程
 				local ground = act.target and
 					act.target
-					.ground --来自act.self.posaction的ground
+					.ground --来自ActionQueuer.posaction的ground
 				local x, z = act.target:GetPosition().x, act.target:GetPosition().z
-				--act.self.posaction
+				--ActionQueuer.posaction
 				for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
 					local select = true
 					for _, ent in pairs(TheSim:FindEntities(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing, 0.2, { "soil" })) do
@@ -1554,7 +1562,7 @@ allowed_actions = {
 					end
 					if select and TheWorld.Map:GetTileAtPoint(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing) == ground then
 						act.target.Transform:SetPosition(x + v[1] * farm_spacing, 0, z + v[2] * farm_spacing)
-						act.self:SelectEntity(act.target, 'TILL', nil, nil, true)
+						ActionQueuer:SelectEntity(act.target, 'TILL', nil, nil, true)
 						return
 					end
 				end
@@ -1566,7 +1574,7 @@ allowed_actions = {
 					if k.x == x and k.z == z
 						or math.abs(k.x - x) + math.abs(k.z - z) < 0.01 then --筛选出已经挖过的
 						posaction_postab[k] = nil
-					elseif v == 'TILL' and act.self:GetAction(nil, 'TILL', true, nil, k) then
+					elseif v == 'TILL' and ActionQueuer:GetAction(nil, 'TILL', true, nil, k) then
 						local curdistsq = distsq(k, player_pos) -- 点距
 						if not mindistsq or curdistsq < mindistsq then -- 哪个点距小记录哪个
 							mindistsq = curdistsq
@@ -1578,7 +1586,7 @@ allowed_actions = {
 				end
 				if target then
 					act.target.Transform:SetPosition(target.x, 0, target.z)
-					act.self:SelectEntity(act.target, 'TILL', nil, nil, true)
+					ActionQueuer:SelectEntity(act.target, 'TILL', nil, nil, true)
 				end
 			end
 		end,
@@ -1611,8 +1619,8 @@ allowed_actions = {
 			end
 		end,
 		reselectfn = function(act)
-			if act.target ~= act.self.posaction then return end
-			if act.self.posaction and act.self.posaction.endlessaction then
+			if act.target ~= ActionQueuer.posaction then return end
+			if ActionQueuer.posaction and ActionQueuer.posaction.endlessaction then
 				local ground = act.target and act.target.ground
 				local x, z = act.target:GetPosition().x, act.target:GetPosition().z
 				for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
@@ -1627,7 +1635,7 @@ allowed_actions = {
 						end
 						if moisture and moisture.AnimState and moisture.AnimState:GetCurrentAnimationTime() < 0.9 then
 							act.target.Transform:SetPosition(x + v[1] * 4, 0, z + v[2] * 4)
-							act.self:SelectEntity(act.target, 'POUR_WATER_GROUNDTILE', nil, nil, true)
+							ActionQueuer:SelectEntity(act.target, 'POUR_WATER_GROUNDTILE', nil, nil, true)
 							return
 						end
 					end
@@ -1653,7 +1661,7 @@ allowed_actions = {
 				end
 				if target then
 					act.target.Transform:SetPosition(target.x, 0, target.z)
-					act.self:SelectEntity(act.target, 'POUR_WATER_GROUNDTILE', nil, nil, true)
+					ActionQueuer:SelectEntity(act.target, 'POUR_WATER_GROUNDTILE', nil, nil, true)
 				end
 			end
 		end,
@@ -1691,14 +1699,14 @@ allowed_actions = {
 		oneclickapply = true,
 		isleftclick = false,
 		reselectfn = function(act)
-			if act.target ~= act.self.posaction then return end
+			if act.target ~= ActionQueuer.posaction then return end
 			if act.item and act.item:HasTag('groundtile') then
-				if act.self.posaction and act.self.posaction.endlessaction then
+				if ActionQueuer.posaction and ActionQueuer.posaction.endlessaction then
 					local x, z = act.target:GetPosition().x, act.target:GetPosition().z
 					for k, v in pairs({ { -1, 0 }, { 0, -1 }, { 0, 1 }, { 1, 0 }, { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, }) do
 						if TheWorld.Map:GetTileAtPoint(x + v[1] * 4, 0, z + v[2] * 4) == 4 then
 							act.target.Transform:SetPosition(x + v[1] * 4, 0, z + v[2] * 4)
-							act.self:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
+							ActionQueuer:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
 							return
 						end
 					end
@@ -1723,7 +1731,7 @@ allowed_actions = {
 					end
 					if target then
 						act.target.Transform:SetPosition(target.x, 0, target.z)
-						act.self:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
+						ActionQueuer:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
 					end
 				end
 			elseif act.item and act.item.prefab == 'minisign_item' then
@@ -1745,7 +1753,7 @@ allowed_actions = {
 				end
 				if target then
 					act.target.Transform:SetPosition(target.x, 0, target.z)
-					act.self:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
+					ActionQueuer:SelectEntity(act.target, 'DEPLOY', act.item, nil, true)
 				end
 			end
 		end,
@@ -1756,7 +1764,7 @@ allowed_actions = {
 					return true
 				end
 			elseif act.item and act.item.prefab == 'minisign_item' then
-				local e = act.self.posaction and act.self.posaction.ent
+				local e = ActionQueuer.posaction and ActionQueuer.posaction.ent
 				if e and e.prefab == 'minisign' then return false end --对着小木牌将会一直在一个点插
 				for _, ent in pairs(TheSim:FindEntities(act.target:GetPosition().x, 0, act.target:GetPosition().z, 1)) do
 					if ent.spawntime and GetTime() - ent.spawntime < 0.1 and ent.prefab == 'minisign' and act.time > 0.15 then
@@ -1801,7 +1809,7 @@ allowed_actions = {
 		controllertable = {},
 		controllercanselect = function(act)
 			act.right = true
-			return act.self:collectActions(act.item, "POINT", "DEPLOY", act)
+			return ActionQueuer:collectActions(act.item, "POINT", "DEPLOY", act)
 		end,
 
 		addtimefn = custom_addtimefn(4)
@@ -1824,20 +1832,20 @@ allowed_actions = {
 	["HAUNT"] = {
 		rpc = custom_rpc('HAUNT'),
 		reselectfn = function(act) --选择护符或者二次表作祟
-			if act.self:HaveAnotherSelectedEnt(act.target) then
+			if ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 				return
 			end
 			local watch
 			for _, ent in pairs(TheSim:FindEntities(act.target:GetPosition().x, 0, act.target:GetPosition().z, 4)) do
 				if ent and ent.prefab == 'amulet' then
-					act.self:SelectEntity(ent, 'HAUNT')
+					ActionQueuer:SelectEntity(ent, 'HAUNT')
 					return
 				elseif ent and ent.prefab == 'pocketwatch_revive' then
 					watch = ent
 				end
 			end
 			if ThePlayer.prefab == 'wanda' and watch then
-				act.self:SelectEntity(watch, 'HAUNT')
+				ActionQueuer:SelectEntity(watch, 'HAUNT')
 				return
 			end
 		end,
@@ -1846,18 +1854,18 @@ allowed_actions = {
 		rpc = function(act)
 			if ThePlayer:HasTag("self_fertilizable") and act.time >= 0.1 then
 				if act.target == ThePlayer then
-					act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
+					ActionQueuer:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
 				end
 			else
-				act.self:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely(ACTIONS["FERTILIZE"].code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
 		act_pre_fn = function(act, self) --负重
 			if act.target and act.target.prefab == 'fwd_in_pdt_plant_coffeebush' then
-				for k, v in pairs(act.self.selected_ents) do
+				for k, v in pairs(ActionQueuer.selected_ents) do
 					if k and k.AnimState and not k.AnimState:IsCurrentAnimation("idle_dead") then
-						act.self:DeselectEntity(k)
+						ActionQueuer:DeselectEntity(k)
 					end
 				end
 			end
@@ -1873,7 +1881,7 @@ allowed_actions = {
 		reselectfn = function(act)
 			for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 4, nil)) do
 				if ent.prefab == "wormhole" then
-					act.self:SelectEntity(ent, "JUMPIN")
+					ActionQueuer:SelectEntity(ent, "JUMPIN")
 				end
 			end
 		end,
@@ -1881,7 +1889,7 @@ allowed_actions = {
 	["DRY"] = {
 		rpc = function(act)
 			if not IsBusy() or act.time < 0.1 then
-				act.self:SendControllerRPCSafely(ACTIONS["DRY"].code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely(ACTIONS["DRY"].code, act.item, act.target)
 			end
 		end,
 		controllertable = {},
@@ -2001,8 +2009,8 @@ allowed_actions = {
 		addtimefn = custom_addtimefn(3 * 3),
 		--stacknumdirtyezsylisten = true, stacknumdirty
 		breakfn = function(act)
-			return not act.self:HaveAnotherSelectedEnt(act.target) and act.time > 5
-				or act.self:HaveAnotherSelectedEnt(act.target) and act.time > 3
+			return not ActionQueuer:HaveAnotherSelectedEnt(act.target) and act.time > 5
+				or ActionQueuer:HaveAnotherSelectedEnt(act.target) and act.time > 3
 		end,
 	},
 	['OPEN_CRAFTING'] = {
@@ -2013,7 +2021,7 @@ allowed_actions = {
 	["TOSS"] = {
 		rpc = custom_rpc('TOSS'),
 		breakfn = function(act)
-			return act.self:HaveAnotherSelectedEnt(act.target, function()
+			return ActionQueuer:HaveAnotherSelectedEnt(act.target, function()
 				return act.time > 0.5
 			end)
 		end,
@@ -2041,7 +2049,7 @@ allowed_actions = {
 	},
 	GRAVEDIG = {
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS.GRAVEDIG.code, act.item, act.target, ACTIONS.GRAVEDIG.mod_name)
+			ActionQueuer:SendControllerRPCSafely(ACTIONS.GRAVEDIG.code, act.item, act.target, ACTIONS.GRAVEDIG.mod_name)
 		end,
 		selectitemfn = function(obj)
 			return ActionQueuer:HasActionComponent(obj, "gravedigger")
@@ -2072,7 +2080,7 @@ end
 for k, v in pairs({ 'DISMANTLE_POCKETWATCH', "COOK", "SEW", "UPGRADE" }) do --控制器rpc
 	allowed_actions[v] = allowed_actions[v] or {
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS[v].code, act.item, act.target, ACTIONS[v].mod_name)
+			ActionQueuer:SendControllerRPCSafely(ACTIONS[v].code, act.item, act.target, ACTIONS[v].mod_name)
 		end,
 		controllertable = {},
 	}
@@ -2081,7 +2089,7 @@ local function addaction(actionid, rpctype, actiontab)
 	actionid = actionid or 'NONE'
 	allowed_actions[actionid] = allowed_actions[actionid] or actiontab or rpctype == 'CONTROLLER' and {
 		rpc = function(act)
-			act.self:SendControllerRPCSafely(ACTIONS[actionid].code, act.item,
+			ActionQueuer:SendControllerRPCSafely(ACTIONS[actionid].code, act.item,
 				act.target, ACTIONS[actionid].mod_name)
 		end,
 		controllertable = {}
@@ -2395,7 +2403,7 @@ function ActionQueuer:GetAction(target, action, rightclick, mouse_item, pos) --a
 		return
 	end
 	--获取控制器动作
-	if mouse_item and actiontable and actiontable.controllercanselect and actiontable.controllercanselect({ target = target, self = self,
+	if mouse_item and actiontable and actiontable.controllercanselect and actiontable.controllercanselect({ target = target,
 			item = mouse_item, pos = pos }) then
 		author_print('return2:', mouse_item)
 		return ACTIONS[actionid], allowed_actions[actionid]
@@ -2490,7 +2498,7 @@ function ActionQueuer:collectActions(inst, actiontype, actionid, params)
 	local target = params.target
 	local pos = params.pos
 	local right = params.right
-	--[[ { target = target, self = self,
+	--[[ { target = target,
             item = mouse_item, pos = pos } ]]
 	if actiontype == "SCENE" then
 		useitem:CollectActions("SCENE", doer, actions, right)
@@ -2560,10 +2568,10 @@ function ActionQueuer:HasAddSpeedEquipment()
 		if v.prefab and v.replica.inventoryitem then
 			local speed = v.replica.inventoryitem:GetWalkSpeedMult()
 			local slot = v.replica.equippable and v.replica.equippable:EquipSlot()
-				if speed and speed > maxspeed and speed > 1 and slot == EQUIPSLOTS.HANDS then
-					maxspeed = speed
-					speeditem, pos = v, k
-				end
+			if speed and speed > maxspeed and speed > 1 and slot == EQUIPSLOTS.HANDS then
+				maxspeed = speed
+				speeditem, pos = v, k
+			end
 		end
 	end
 	for k, v in pairs(ThePlayer.replica.inventory:GetEquips()) do
@@ -2672,7 +2680,10 @@ end
 
 local trees = { "evergreen", "deciduoustree", "moon_tree", "twiggytree", "palmconetree", "evergreen_sparse" }
 local tree_cherry = {
-	cancherypick = function(self) return self.last_click.action == ACTIONS.CHOP end,
+	cancherypick = function(self)
+		return (self.last_click.action == ACTIONS.CHOP
+			or self.last_click.action == ACTIONS.WAX)
+	end,
 	cherrypickfn = function(self, rightclick)
 		local x, y, z = self.last_click.pos:Get()
 		if (self.last_click.ent and self.last_click.ent:HasTag("burnt")) then
@@ -2749,7 +2760,7 @@ local cherryPickTable = {
 	}, --not act.target.AnimState:IsCurrentAnimation("cocoon_small")
 	["marbleshrub"] = {
 		cancherypick = function(self)
-			return self.last_click.action == ACTIONS.MINE and
+			return (self.last_click.action == ACTIONS.MINE or self.last_click.action == ACTIONS.WAX) and
 				self.last_click.AnimState:IsCurrentAnimation("idle_tall")
 		end,
 		cherrypickfn = function(self, rightclick)
@@ -3214,20 +3225,20 @@ function ActionQueuer:SelectEndlessEnt(old_mouse)
 	local endlesstab = endlesstable[need_prefab]
 	for k, v in pairs(entity) do
 		if not self:IsSelectedEntity(v) then
-		local ent = v and v.client_forward_target or v
-		if endlesstab then
-			if endlesstab.selectfn and endlesstab.selectfn(ent) then
-				--(ent, actid, item, specialtag, rightclick)
-				self:SelectEntity(ent, self.endless_repeat_target.actid, self.endless_repeat_target.item,
-					self.endless_repeat_target.specialtag
-					, self.endless_repeat_target.rightclick)
-			end
+			local ent = v and v.client_forward_target or v
+			if endlesstab then
+				if endlesstab.selectfn and endlesstab.selectfn(ent) then
+					--(ent, actid, item, specialtag, rightclick)
+					self:SelectEntity(ent, self.endless_repeat_target.actid, self.endless_repeat_target.item,
+						self.endless_repeat_target.specialtag
+						, self.endless_repeat_target.rightclick)
+				end
 			elseif not endlesstab and ent and ENT_util:IsValid(ent) then
 				if ent.prefab == need_prefab then
 					if self:GetAction(ent, self.endless_repeat_target.actid, nil, old_mouse) then
-			self:SelectEntity(ent, self.endless_repeat_target.actid, self.endless_repeat_target.item,
-				self.endless_repeat_target.specialtag
-				, self.endless_repeat_target.rightclick)
+						self:SelectEntity(ent, self.endless_repeat_target.actid, self.endless_repeat_target.item,
+							self.endless_repeat_target.specialtag
+							, self.endless_repeat_target.rightclick)
 					end
 				elseif all_prefab[ent.prefab] then
 					local data = all_prefab[ent.prefab]
@@ -3349,19 +3360,19 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 				end
 				--对于控制器rpc,需要返回鼠标物品到库存
 				if acttab.controllertable and ENT_util:FnOrNum(acttab.controllertable.needreturnactiveitem,
-						{ target = target, item = update_item, time = 0, self = self }) and not ENT_util:FnOrNum(acttab.controllertable.cancelcontroller,
-						{ target = target, item = update_item, time = 0, self = self }) then
+						{ target = target, item = update_item, time = 0, }) and not ENT_util:FnOrNum(acttab.controllertable.cancelcontroller,
+						{ target = target, item = update_item, time = 0, }) then
 					local returnitem = acttab.controllertable.returnfn and acttab.controllertable.returnfn() or
 						returnfunction()
 				end
 				--在进入循环前可以执行的函数 举例：装上勋章
 				if acttab.act_pre_fn then
-					acttab.act_pre_fn({ target = target, item = update_item, time = 0, self = self }, self)
+					acttab.act_pre_fn({ target = target, item = update_item, time = 0, }, self)
 				end
 				--判断是否应该切手杖
 				local speeditem
 				if self:ShouldEquipSpeeditem() and MOD_util:GetMOption("aq_equipcane", default_aq_equipcane)
-					and ENT_util:FnOrNum(acttab.equipspeeditem, { target = target, item = update_item, time = 0, self = self })
+					and ENT_util:FnOrNum(acttab.equipspeeditem, { target = target, item = update_item, time = 0, })
 					and not ENT_util:isOnWater(ThePlayer) then
 					speeditem = self:HasAddSpeedEquipment()
 					if speeditem then
@@ -3393,7 +3404,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					local lookfor_new_inv_item
 					--如果是控制器动作就更新物品update_item
 					if acttab.controllertable and not ENT_util:FnOrNum(acttab.controllertable.cancelcontroller,
-							{ target = target, item = update_item, time = 0, self = self }) and oldactive_item then
+							{ target = target, item = update_item, time = 0, }) and oldactive_item then
 						local function updatestacknumdirty()
 							lookfor_new_inv_item = true
 							return true
@@ -3426,7 +3437,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 						break
 					end
 					--如果满足breakfn 退出循环
-					if acttab.breakfn and acttab.breakfn({ target = target, item = update_item, time = time, self = self,
+					if acttab.breakfn and acttab.breakfn({ target = target, item = update_item, time = time,
 							stacknumdirty = stacknumdirty,
 							busytime = busytime, }) then
 						author_print('break_by_breakfn')
@@ -3466,11 +3477,11 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					end
 					--没动作的目标会判断是否退出循环。满足notbreakfn的时候，即使没动作也不会退出循环
 					if not speedflag and (not acttab.notbreakfn or not acttab.notbreakfn(
-							{ target = target, item = update_item, time = time, self = self, })) --有些操作暂时导致没动作，但是我不希望它退出排队论
+							{ target = target, item = update_item, time = time, })) --有些操作暂时导致没动作，但是我不希望它退出排队论
 						and not self:GetAction(target, act, nil, update_item) then
 						--不是控制器动作会尝试拿起物品
 						if ENT_util:FnOrNum(not acttab.controllertable or acttab.controllertable.cancelcontroller,
-								{ target = target, item = update_item, time = 0, self = self }) and oldactive_item then
+								{ target = target, item = update_item, time = 0, }) and oldactive_item then
 							local active = INV_util:GetActiveItem()
 							local a, b, c = INV_util:FindInInventory(nil, nil, function(inst)
 								if inst.prefab == oldactive_item.prefab and (not acttab.selectitemfn or acttab.selectitemfn(inst))
@@ -3527,7 +3538,6 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 							target = target,
 							item = update_item,
 							time = time,
-							self = self,
 							tool = work_tool,
 						})
 					elseif speedflag then
@@ -3539,13 +3549,13 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					--可以自定义睡眠时间 addtimefn用于增加act.time
 					Sleep(acttab.sleeptime or 0)
 					local addtime = not acttab.addtimefn or
-						acttab.addtimefn({ target = target, item = update_item, time = time, self = self })
+						acttab.addtimefn({ target = target, item = update_item, time = time, })
 					if addtime == 'resettime' then
 						time = 0
 					elseif addtime then
 						time = time + (acttab.sleeptime or FRAMES) --部分rpc需要时间判断
 					end
-					if ENT_util:FnOrNum(acttab.addbusytime, { target = target, item = update_item, time = time, self = self })
+					if ENT_util:FnOrNum(acttab.addbusytime, { target = target, item = update_item, time = time, })
 					then
 						busytime = busytime + (acttab.sleeptime or FRAMES)
 					end
@@ -3560,7 +3570,6 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 						target = target,
 						item = update_item,
 						time = 0,
-						self = self,
 						hand =
 							hand_item
 					})
@@ -3576,7 +3585,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 				self:DeselectEntity(target)
 
 				if acttab and acttab.reselectfn then
-					acttab.reselectfn({ target = target, item = update_item, time = time, self = self })
+					acttab.reselectfn({ target = target, item = update_item, time = time, })
 				end
 				if acttab and ENT_util:FnOrNum(acttab.allowautocollect, target, self) then
 					for _, ent in pairs(TheSim:FindEntities(ThePlayer:GetPosition().x, 0, ThePlayer:GetPosition().z, 4)) do
@@ -3590,7 +3599,7 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 				end
 			end
 			if acttab and acttab.exit_loop_fn then
-				acttab.exit_loop_fn({ target = target, item = update_item, time = time, self = self })
+				acttab.exit_loop_fn({ target = target, item = update_item, time = time, })
 			end
 			Sleep(0)
 		end
@@ -4526,12 +4535,16 @@ MOD_util:AddKeyUpHandler("aq_autocollectkey", default_aq_autocollectkey, functio
 	if not GAME_util:InGame() then return end
 
 	local self = ActionQueuer
+
 	if self.autocollect == 1 then
 		ThePlayer.components.talker:Say("排队论:挖树根模式")
 		self.autocollect = 2
 	elseif self.autocollect == 2 then
 		ThePlayer.components.talker:Say("排队论:挖树根且收集模式")
 		self.autocollect = 3
+	elseif self.autocollect == 3 then
+		ThePlayer.components.talker:Say("排队论:收集模式")
+		self.autocollect = 4
 	else
 		ThePlayer.components.talker:Say("排队论:收集模式关闭")
 		self.autocollect = 1
@@ -4650,8 +4663,12 @@ if MOD_util:CanAddSetting() then
 				description = "默认收集模式",
 				key = "aq_autocollect",
 				default = default_aq_autocollect,
-				options = { { text = "关闭", data = 1 }, { text = "挖树根模式", data = 2 },
-					{ text = "挖树根且收集", data = 3 }, },
+				options = {
+					{ text = "关闭", data = 1 },
+					{ text = "挖树根模式", data = 2 },
+					{ text = "挖树根且收集", data = 3 },
+					{ text = "收集模式", data = 4 },
+				},
 			}, {
 			description = "切换收集模式",
 			MapKey = true,
