@@ -9,7 +9,6 @@ modimport("m_utils/m_utils") --导入库函数
 	return
 end]]
 MOD_util:CheckUtilsVersion(1.0)
-MOD_util:MakeTitleConfiguration("aq_title", "排队论设置")
 local Image = require("widgets/image")
 --
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
@@ -2060,6 +2059,10 @@ allowed_actions = {
 		rpc = custom_rpc("FEED"),
 		stacknumdirtyezsylisten = true,
 	},
+	STARTELECTRICLINK = {
+		rpc = custom_rpc("STARTELECTRICLINK"),
+		ez_listenperformaction = true,
+	},
 }
 if _G.rawget(_G, 'REFORGED_SETTINGS') then
 	allowed_actions.ATTACK = nil
@@ -2195,6 +2198,10 @@ function ActionQueuer:UpdateSelectionColor()
 end
 
 function ActionQueuer:InitFn(inst)
+	ThePlayer:ListenForEvent("performaction", function(inst, data)
+		self.performaction = true
+	end)
+
 	self.inst = inst
 
 	self:creatSelectionWidget()
@@ -3385,6 +3392,8 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 
 				self.waiting_for_break = false
 				self.no_act_time = nil
+
+				self.performaction = nil
 				while acttab do
 					do
 						if self.mem.not_unique_target == nil then
@@ -3435,6 +3444,12 @@ function ActionQueuer:ApplyToSelection(notclearbuffer)
 					if stacknumdirty and acttab.stacknumdirtyezsylisten and self:HaveAnotherSelectedEnt(target) then
 						author_print('break_by_stacknumdirtyezsylisten')
 						break
+					end
+					do --ez_listenperformaction
+						if acttab.ez_listenperformaction and self.performaction and self:HaveAnotherSelectedEnt(target) then
+							author_print('break_by_ez_listenperformaction')
+							break
+						end
 					end
 					--如果满足breakfn 退出循环
 					if acttab.breakfn and acttab.breakfn({ target = target, item = update_item, time = time,
