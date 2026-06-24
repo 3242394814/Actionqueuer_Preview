@@ -4,12 +4,72 @@ GLOBAL.setmetatable(env, {
 		return GLOBAL.rawget(GLOBAL, k)
 	end
 })
-modimport("m_utils/m_utils") --导入库函数
 --[[do
 	return
 end]]
+if not MOD_util then
+	local function should_show_dig()
+		if TheNet:GetIsServer() and TheNet:GetServerIsDedicated() then
+			return false
+		end
+		if not TheFrontEnd then
+			return false
+		end
+		if IsMigrating() then
+			return false
+		end
+		return not InGamePlay()
+	end
+	if rawget(GLOBAL, "suggest_to_subscribe_mmdx_basementmod") then
+		return
+	end
+	GLOBAL.suggest_to_subscribe_mmdx_basementmod = true
+	AddGamePostInit(function()
+		local pop
+		pop = TheGlobalInstance:DoTaskInTime(0.1, function()
+			if should_show_dig() then
+				local PopupDialogScreen = require "screens/redux/popupdialog"
+				TheFrontEnd:PushScreen(PopupDialogScreen(
+					"模组基础运行库缺失！[you are lack the basement mod!]",
+					"你缺少了模组基础运行库，你必须去订阅才能继续使用本模组\nyou lack of my basement mod,must to subscribe then you can use this mod",
+					{
+						{
+							text = "返回[back]",
+							cb = function()
+								TheFrontEnd:PopScreen()
+							end
+						},
+						{
+							text = "启用库模组[enable]",
+							cb = function()
+								local modname = "workshop-3750329397"
+								if table.contains(TheSim:GetModDirectoryNames(), modname) then
+									KnownModIndex:Enable(modname)
+									KnownModIndex:Save(nil)
+								else
+									return
+								end
+								TheFrontEnd:PopScreen()
+							end
+						},
+						{
+							text = "订阅！[subscribe!]",
+							cb = function()
+								VisitURL("https://steamcommunity.com/sharedfiles/filedetails/?id=3750329397")
+								TheSim:SubscribeToMod("workshop-3750329397")
+								TheFrontEnd:PopScreen()
+							end
+						},
+					}
+				))
+			end
+		end)
+	end)
+	return
+end
 MOD_util:CheckUtilsVersion(1.0)
 local Image = require("widgets/image")
+local WX78Common = require("prefabs/wx78_common")
 --
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
 --organ queue https://steamcommunity.com/sharedfiles/filedetails/?id=2325441848
@@ -221,7 +281,12 @@ end
 local allowed_actions
 allowed_actions = {
 	["CHOP"] = {
-		equipspeeditem = true,
+		equipspeeditem = function()
+			if ThePlayer.GetModuleTypeCount and ThePlayer:GetModuleTypeCount("spin") > 0 then
+				return
+			end
+			return true
+		end,
 		act_pre_fn = function(act, self)
 			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('chopMedal') then
 				local now = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.MEDAL)
@@ -294,7 +359,12 @@ allowed_actions = {
 		end,
 	},
 	['MINE'] = {
-		equipspeeditem = true,
+		equipspeeditem = function()
+			if ThePlayer.GetModuleTypeCount and ThePlayer:GetModuleTypeCount("spin") > 0 then
+				return
+			end
+			return true
+		end,
 		act_pre_fn = function(act, self)
 			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('minerMedal') then
 				local now = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.MEDAL)
@@ -609,7 +679,16 @@ allowed_actions = {
 		controllertable = {},
 	},
 	["PICK"] = {
-		equipspeeditem = true,
+		equipspeeditem = function(act)
+			if ThePlayer.GetModuleTypeCount and ThePlayer:GetModuleTypeCount("spin") > 0
+				and act.target:HasAnyTag(HARVESTABLE_PLANT_TARGET_TAGS) then
+				local item = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.HANDS)
+				if WX78Common.CanSpinUsingItem(item) then
+					return
+				end
+			end
+			return true
+		end,
 		--isleftclick = true,
 		isleftclick = function(target)
 			if target and (target:HasTag("flower")) then
@@ -621,7 +700,11 @@ allowed_actions = {
 			-- if (act.target and math.sqrt(distsq(act.target:GetPosition(), ThePlayer:GetPosition())) < 5) then
 			--SendRPCToServer(RPC.ActionButton, ACTIONS.PICK.code, act.target, nil, true)
 			--else
-			if act.time > 0.5 and not IsBusy() or act.time < 0.1 then
+			if DealWx78_spinact(act, ACTIONS.PICK.code, true) then
+				SendRPCToServer(RPC.LeftClick, ACTIONS.PICK.code, act.target:GetPosition().x,
+					act.target:GetPosition().z,
+					act.target, nil, nil, ACTIONS.PICK.canforce, ACTIONS.PICK.mod_name)
+			elseif act.time > 0.5 and not IsBusy() or act.time < 0.1 then
 				SendRPCToServer(RPC.LeftClick, ACTIONS.PICK.code, act.target:GetPosition().x,
 					act.target:GetPosition().z,
 					act.target, nil, nil, ACTIONS.PICK.canforce, ACTIONS.PICK.mod_name)
@@ -3264,7 +3347,8 @@ function ActionQueuer:MakeTool(toolfn, oldhandtool, hasclickequip)
 	if not MOD_util:GetMOption("aq_automaketool", default_aq_automaketool) then return false end
 	local maketool
 	for recname, rec in pairs(AllRecipes) do
-		if oldhandtool and (oldhandtool.prefab == (rec.product or recname)) and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
+		if oldhandtool and (oldhandtool.prefab == (rec.product or recname))
+			and IsRecipeValid(recname) and ThePlayer.replica.builder:KnowsRecipe(recname) and
 			ThePlayer.replica.builder:HasIngredients(recname) then
 			SendRPCToServer(RPC.MakeRecipeFromMenu, rec.rpc_id)
 			maketool = true
