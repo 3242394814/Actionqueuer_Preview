@@ -9,18 +9,100 @@ if not KnownModIndex:IsModEnabledAny("workshop-3136701076") then
     return
 end
 
-local function Import(modulename, env)
-	local f = GLOBAL.kleiloadlua(modulename)
-	if f and type(f) == "function" then
-        setfenv(f, env or GLOBAL)
-        return f()
+if not rawget(GLOBAL, "BBGOAT_utils") then
+    if TUNING.suggest_to_subscribe_bbgoat_basementmod then
+        return
+    end
+    TUNING.suggest_to_subscribe_bbgoat_basementmod = true
+
+	local function should_show_dig()
+		if TheNet:IsDedicated() then
+			return false
+		end
+		if not TheFrontEnd then
+			return false
+		end
+		if IsMigrating() then
+			return false
+		end
+		return not InGamePlay()
 	end
+
+	local _languages = {
+		zh = true, --Chinese for Steam
+		zhr = true, --Chinese for WeGame
+		ch = true, --Chinese mod
+		chs = true, --Chinese mod
+		sc = true, --simple Chinese
+		chinese = true, --Chinese mod
+		zht = true, --traditional Chinese for Steam
+		tc = true, --traditional Chinese
+		cht = true, --Chinese mod
+	}
+	local lang = _G.LanguageTranslator and _G.LanguageTranslator.defaultlang
+	local isCH = lang and _languages[lang]
+
+    AddGamePostInit(function()
+        TheGlobalInstance:DoTaskInTime(0.1, function()
+            if not should_show_dig() then return end
+            local PopupDialogScreen = require "screens/redux/popupdialog"
+            TheFrontEnd:PushScreen(PopupDialogScreen(
+                modinfo.name,
+                isCH and "模组基础运行库缺失！\n你缺少了模组基础运行库，你必须去订阅才能继续使用本模组" or
+                        "Mod Runtime Library Missing!\nYou are missing the required runtime library for this mod. Please subscribe to it before continuing to use this mod.",
+                {
+                    {
+                        text = isCH and "订阅/启用运行库模组" or "Subscribe/Enable mod",
+                        cb = function()
+                            local modname = "workshop-3750536829"
+                            if table.contains(TheSim:GetModDirectoryNames(), modname) then
+                                KnownModIndex:Enable(modname)
+                                KnownModIndex:Save()
+                                TheGlobalInstance:DoTaskInTime(0.5, function()
+                                    TheNet:Disconnect(true)
+                                    TheSim:ResetError()
+                                    StartNextInstance()
+                                end)
+                            else
+                                VisitURL("https://steamcommunity.com/sharedfiles/filedetails/?id=3750536829")
+                                TheSim:SubscribeToMod("workshop-3750536829")
+                                TheFrontEnd:PopScreen()
+                                TheFrontEnd:PushScreen(PopupDialogScreen(
+                                    isCH and "已订阅" or "Subscribed",
+                                    isCH and "请前往模组列表启用【冰冰羊的模组运行库】模组" or "Please go to the mod list to enable the runtime library mod named\n\"BBGOAT Utils\"",
+                                    {
+                                        {
+                                            text = isCH and "好的" or "OK",
+                                            cb = function()
+                                                TheFrontEnd:PopScreen()
+                                            end
+                                        }
+                                    }
+                                ))
+                            end
+                        end
+                    },
+                    {
+                        text = isCH and "返回" or "Back",
+                        cb = function()
+                            TheFrontEnd:PopScreen()
+                        end
+                    },
+                }
+            ))
+        end)
+    end)
+    return
 end
 
-local Upvaluehelper = Import(MODROOT .. "bbgoat_upvaluehelper.lua")
-local _ActionQueuer
+Upvaluehelper = GLOBAL.BBGOAT_utils.Upvaluehelper -- 来自冰冰羊的模组运行库
+MOD_util = GLOBAL.MOD_util -- 来自萌萌的新-基础运行库
+if not MOD_util then
+    print("[黑化排队论 · 动作预览] 未检测萌萌的新-基础运行库模组被开启。停止加载本模组")
+    return
+end
 
-local MOD_util = Import(MODROOT .. "MOD_util.lua", env)
+local _ActionQueuer
 
 -- 基本定义（来自黑化排队论模组）
 local farm_spacing
@@ -53,7 +135,7 @@ if gp_mod then
         return GLOBAL.GetModConfigData("CTRL","workshop-351325790")
     end
 else
-    print("[行为学预览] 未检测到几何布局模组开启")
+    print("[黑化排队论 · 动作预览] 未检测到几何布局模组开启")
 end
 
 local ActionQueuerPreview = {}
@@ -373,7 +455,8 @@ function ActionQueuerPreview:GetPosList(spacing, snap_farm, tow, istill, maxsize
                         TheWorld.Map:CanDeployRecipeAtPoint(
                             accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                             ThePlayer.components.playercontroller.placer_recipe,
-                            ThePlayer.components.playercontroller.placer:GetRotation()
+                            ThePlayer.components.playercontroller.placer:GetRotation(),
+                            ThePlayer
                     )
             then
                 accessible_pos = false
@@ -857,7 +940,8 @@ AddComponentPostInit("playercontroller", function(self, inst)
                         TheWorld.Map:CanDeployRecipeAtPoint(
                             accessible_pos and gp_mod_Snap and gp_mod_CTRL_setting() == TheInput:IsKeyDown(KEY_CTRL) and gp_mod_Snap(cur_pos) or cur_pos, -- 兼容几何布局校准后的点位
                             ThePlayer.components.playercontroller.placer_recipe,
-                            ThePlayer.components.playercontroller.placer:GetRotation()
+                            ThePlayer.components.playercontroller.placer:GetRotation(),
+                            ThePlayer
                     )
                 then
                     accessible_pos = false
