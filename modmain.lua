@@ -74,22 +74,42 @@ local WX78Common = require("prefabs/wx78_common")
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
 --organ queue https://steamcommunity.com/sharedfiles/filedetails/?id=2325441848
 --默认
-local default_aq_selectwidget = true
-local default_aq_queuekey = KEY_LSHIFT
-local default_aq_gridkey = KEY_F3
-local default_aq_recipekey = KEY_C
-local default_aq_endlesskey = KEY_F9
-local default_aq_autocollectkey = KEY_F4
-local default_aq_autocollect = GetModConfigData('autocollect') or 1
-local default_aq_endless_deploy = GetModConfigData('endless_deploy') or false
-local default_aq_selectwidget_r = 255
-local default_aq_selectwidget_g = 90
-local default_aq_selectwidget_b = 45
-local default_aq_selectwidget_opacity = 0.5
+local function GetConfigOrDefault(name, default, fallback_name)
+	local value = GetModConfigData(name)
+	if value == nil and fallback_name then
+		value = GetModConfigData(fallback_name)
+	end
+	if value == nil then
+		return default
+	end
+	return value
+end
+
+local function GetKeyConfigOrDefault(name, default)
+	local value = GetConfigOrDefault(name, default)
+	if type(value) == "string" then
+		return rawget(GLOBAL, value) or default
+	end
+	return value
+end
+
+local default_aq_selectwidget = GetConfigOrDefault('aq_selectwidget', true)
+local default_aq_queuekey = GetKeyConfigOrDefault('aq_queuekey', KEY_LSHIFT)
+local default_aq_gridkey = GetKeyConfigOrDefault('aq_gridkey', KEY_F3)
+local default_aq_recipekey = GetKeyConfigOrDefault('aq_recipekey', KEY_C)
+local default_aq_endlesskey = GetKeyConfigOrDefault('aq_endlesskey', KEY_F9)
+local default_aq_autocollectkey = GetKeyConfigOrDefault('aq_autocollectkey', KEY_F4)
+local default_aq_highlight = GetConfigOrDefault('aq_highlight', true)
+local default_aq_autocollect = GetConfigOrDefault('aq_autocollect', 1, 'autocollect')
+local default_aq_endless_deploy = GetConfigOrDefault('aq_endless_deploy', false, 'endless_deploy')
+local default_aq_selectwidget_r = GetConfigOrDefault('aq_selectwidget_r', 255)
+local default_aq_selectwidget_g = GetConfigOrDefault('aq_selectwidget_g', 90)
+local default_aq_selectwidget_b = GetConfigOrDefault('aq_selectwidget_b', 45)
+local default_aq_selectwidget_opacity = GetConfigOrDefault('aq_selectwidget_opacity', 0.5)
 local default_aq_lantern_chop = false --MOD_util:GetMOption("aq_lantern_chop", default_aq_lantern_chop)
-local default_aq_equipcane = true
-local default_aq_double_click_range = 20
-local default_aq_automaketool = true
+local default_aq_equipcane = GetConfigOrDefault('aq_equipcane', true)
+local default_aq_double_click_range = GetConfigOrDefault('aq_double_click_range', 20)
+local default_aq_automaketool = GetConfigOrDefault('aq_automaketool', true)
 local default_dropcheck_internal = 0.5
 Assets = Assets or {}
 table.insert(Assets, Asset("ATLAS", "images/selection_square.xml"))
@@ -1392,10 +1412,13 @@ allowed_actions = {
 	},
 	['SCYTHE'] = {
 		rpc = function(act)
-			local scythe = act.item or INV_util:FindInInventory('voidcloth_scythe')
+			--IsWithinAngle
+			local hand = INV_util:GetHandsEquip()
+			local scythe = hand and hand.prefab == 'voidcloth_scythe' and hand or act.item or
+				INV_util:FindInInventory('voidcloth_scythe')
 			local item = scythe
-			if item and item.replica and item.replica.equippable and item.replica.equippable:IsEquipped() then
-			else
+			if item and item.replica.equippable and item.replica.equippable:IsEquipped() then
+			elseif item then
 				SendRPCToServer(RPC.UseItemFromInvTile, ACTIONS.EQUIP.code, item, nil, nil)
 			end
 			if distsq(ThePlayer:GetPosition(), act.target:GetPosition()) < 0.2 ^ 2 then
@@ -1405,10 +1428,27 @@ allowed_actions = {
 				Sleep(0.5)
 				return
 			end
+			do
+				if ActionQueuer.performaction then
+					local doer_rotation = ThePlayer.Transform:GetRotation()
+					local facing = Vector3(math.cos(-doer_rotation / RADIANS), 0, math.sin(-doer_rotation / RADIANS))
+					if IsWithinAngle(ThePlayer:GetPosition(), facing, TUNING.VOIDCLOTH_SCYTHE_HARVEST_ANGLE_WIDTH,
+							act.target:GetPosition()) then
+						Sleep(0.5)
+						local pos = POS_util:CalculateAimPos(act.target:GetPosition(), ThePlayer:GetPosition(), 90 *
+							DEGREES, 2)
+						SendRPCToServer(RPC.LeftClick, ACTIONS.WALKTO.code, pos.x,
+							pos.z)
+						Sleep(0.5)
+						ActionQueuer.performaction = false
+					end
+				end
+			end
 			SendRPCToServer(RPC.LeftClick, ACTIONS.SCYTHE.code, act.target:GetPosition().x,
 				act.target:GetPosition().z,
 				act.target, nil, nil, ACTIONS.SCYTHE.canforce, ACTIONS.SCYTHE.mod_name)
 		end,
+		--[[ez_listenperformaction = true,]]
 		controllercanselect = function(act)
 			act.right = true
 			return ActionQueuer:collectActions(act.item, "USEITEM", "SCYTHE", act)
@@ -2889,7 +2929,7 @@ function ActionQueuer:CherryPick(rightclick)
 		-- 230518 呼吸 如果按住ctrl 范围将为160, 否则为默认设置
 		local newrange           = MOD_util:GetMOption("aq_double_click_range", default_aq_double_click_range)
 		newrange                 = math.min(newrange, 160)
-		self.control_click_range = TheInput:IsKeyDown(KEY_LCTRL) and 160 or
+		self.control_click_range = TheInput:IsControlPressed(CONTROL_FORCE_STACK) and 160 or
 			newrange or self.double_click_range
 
 		local cherrypick_target  = cherryPickTable[self.last_click.prefab]
@@ -4041,7 +4081,7 @@ end
 
 --高亮
 function ActionQueuer:HighlightEntity(ent)
-	if not MOD_util:GetMOption("aq_highlight", true) then
+	if not MOD_util:GetMOption("aq_highlight", default_aq_highlight) then
 		return
 	end
 	if not ent.components.highlight then
@@ -4192,7 +4232,8 @@ AddComponentPostInit("playercontroller", function(self, inst)
 		local mouse_control = mouse_controls[control]
 		if mouse_control ~= nil then
 			if down then
-				if TheInput:IsKeyDown(MOD_util:GetMOption("aq_queuekey", default_aq_queuekey))
+				local queuekey = MOD_util:GetMOption("aq_queuekey", default_aq_queuekey)
+				if queuekey and TheInput:IsKeyDown(queuekey)
 					and not TheInput:IsControlPressed(CONTROL_FORCE_INSPECT) then
 					ActionQueuer:OnDown(mouse_control)
 					return
@@ -4239,7 +4280,8 @@ AddClassPostConstruct("components/builder_replica", function(self)
 	-- 制作物品
 	local BuilderReplicaMakeRecipeFromMenu = self.MakeRecipeFromMenu
 	self.MakeRecipeFromMenu = function(self, recipe, skin)
-		if not ActionQueuer.action_thread and TheInput:IsKeyDown(MOD_util:GetMOption("aq_queuekey", default_aq_queuekey))
+		local queuekey = MOD_util:GetMOption("aq_queuekey", default_aq_queuekey)
+		if not ActionQueuer.action_thread and queuekey and TheInput:IsKeyDown(queuekey)
 			and not recipe.placer --[[ and self:CanBuild(recipe.name) ]] then
 			ActionQueuer:RepeatRecipe(self, recipe, skin)
 		else
@@ -4733,7 +4775,7 @@ if MOD_util:CanAddSetting() then
 				key = "aq_queuekey",
 				default = default_aq_queuekey,
 			},
-			MakeOption("aq_highlight", "高亮显示选中目标", true, enabledisableoption),
+			MakeOption("aq_highlight", "高亮显示选中目标", default_aq_highlight, enabledisableoption),
 			{
 				description = "网格显示按键",
 				MapKey = true,
