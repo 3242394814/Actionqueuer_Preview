@@ -74,6 +74,9 @@ local WX78Common = require("prefabs/wx78_common")
 --https://steamcommunity.com/sharedfiles/filedetails/?id=3136701076
 --organ queue https://steamcommunity.com/sharedfiles/filedetails/?id=2325441848
 --默认
+local function null()
+
+end
 local function GetConfigOrDefault(name, default, fallback_name)
 	local value = GetModConfigData(name)
 	if value == nil and fallback_name then
@@ -110,6 +113,7 @@ local default_aq_lantern_chop = false --MOD_util:GetMOption("aq_lantern_chop", d
 local default_aq_equipcane = GetConfigOrDefault('aq_equipcane', true)
 local default_aq_double_click_range = GetConfigOrDefault('aq_double_click_range', 20)
 local default_aq_automaketool = GetConfigOrDefault('aq_automaketool', true)
+local default_aq_showdeploy = GetConfigOrDefault('aq_showdeploy', true)
 local default_dropcheck_internal = 0.5
 Assets = Assets or {}
 table.insert(Assets, Asset("ATLAS", "images/selection_square.xml"))
@@ -2344,6 +2348,8 @@ function ActionQueuer:InitFn(inst)
 	-- self.color = { x = 0.5, y = 0.5, z = 0.5 }
 	self.color = { x = 207 / 255, y = 61 / 255, z = 61 / 255 }
 	self.deploy_on_grid = false
+	self.deploy_hint_markers = {}
+	self.deploy_hint_count = 0
 	self.endless_deploy = MOD_util:GetMOption("aq_endless_deploy", default_aq_endless_deploy) or false
 	self.last_click = { time = 0 }
 	self.double_click_speed = 0.3
@@ -2727,6 +2733,511 @@ function ActionQueuer:HasAddSpeedEquipment()
 	return speeditem, pos, backpack
 end
 
+function ActionQueuer:CanDeployHint()
+	if not MOD_util:GetMOption("aq_showdeploy", default_aq_showdeploy) then
+		return false
+	end
+	if self.selected_ents and next(self.selected_ents) then
+		return
+	end
+	return true
+end
+
+local MAX_DEPLOY_HINT_MARKERS = 400
+
+function ActionQueuer:ClearDeployHint(remove)
+	local markers = self.deploy_hint_markers
+	if not markers then return end
+	for i, marker in pairs(markers) do
+		if marker and marker:IsValid() then
+			if remove then
+				marker:Remove()
+				markers[i] = nil
+			else
+				marker:Hide()
+			end
+		else
+			markers[i] = nil
+		end
+	end
+	self.deploy_hint_count = 0
+end
+
+function ActionQueuer:HideUnusedDeployHintMarkers(used_count)
+	local markers = self.deploy_hint_markers
+	if not markers then return end
+	for i = used_count + 1, #markers do
+		local marker = markers[i]
+		if marker and marker:IsValid() then
+			marker:Hide()
+		end
+	end
+	self.deploy_hint_count = used_count
+end
+
+local function CreateDeployHintMarker()
+	local marker = CreateEntity()
+	marker.entity:AddTransform()
+	marker.entity:AddAnimState()
+	marker.entity:SetCanSleep(false)
+	marker.persists = false
+	marker:AddTag("CLASSIFIED")
+	marker:AddTag("NOCLICK")
+	marker:AddTag("placer")
+	marker:AddTag("DECOR")
+	marker:AddTag("FX")
+	marker:AddTag("NOBLOCK")
+	marker.AnimState:SetBank("sign_mini")
+	marker.AnimState:SetBuild("sign_mini")
+	marker.AnimState:PlayAnimation("idle", true)
+	marker.AnimState:SetLightOverride(1)
+	local placer = marker:AddComponent("placer")
+	placer.hide_inv_icon = false
+	return marker
+end
+
+local function IsValidDeployHintAnimSource(source)
+	return source and source.IsValid and source:IsValid() and source.AnimState
+end
+
+local function GetDeployHintAnimSource(self, item)
+	local playercontroller = self.inst and self.inst.components.playercontroller
+	if playercontroller then
+		if IsValidDeployHintAnimSource(playercontroller.deployplacer) then
+			return playercontroller.deployplacer
+		end
+		if IsValidDeployHintAnimSource(playercontroller.placer) then
+			return playercontroller.placer
+		end
+	end
+	if IsValidDeployHintAnimSource(item) then
+		return item
+	end
+	local active_item = INV_util:GetActiveItem()
+	if IsValidDeployHintAnimSource(active_item) then
+		return active_item
+	end
+end
+
+local DEPLOY_HINT_ANIM_DATA_CACHE = {}
+
+local function GetDeployHintAnimCacheKey(source, item)
+	return source and source.prefab or item and item.prefab
+end
+
+local function GetDeployHintAnimData(source, item)
+	if not source or not source.AnimState then return end
+	local cache_key = GetDeployHintAnimCacheKey(source, item)
+	if cache_key and DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] then
+		return DEPLOY_HINT_ANIM_DATA_CACHE[cache_key]
+	end
+	local animstate = source.AnimState
+	local ok_build, build = pcall(function() return animstate:GetBuild() end)
+	if not ok_build or not build or build == "" or build == "FROMNUM" then
+		return
+	end
+	local ok_bank, bank = pcall(function() return animstate:GetBankHash() end)
+	if not ok_bank or not bank or bank == 0 then
+		bank = build
+	end
+	local ok_history, _, anim = pcall(function() return animstate:GetHistoryData() end)
+	if not ok_history or not anim or anim == "" then
+		for _, anim_name in ipairs({ "idle", "idle_loop", "idle_planted", "idle1", "anim" }) do
+			if animstate:IsCurrentAnimation(anim_name) then
+				anim = anim_name
+				break
+			end
+		end
+	end
+	if anim then
+		local data = { bank = bank, build = build, anim = anim }
+		if cache_key then
+			DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] = data
+		end
+		return data
+	end
+end
+
+function ActionQueuer:SetDeployHintMarkerAnim(marker, item)
+	local source = GetDeployHintAnimSource(self, item)
+	local data = GetDeployHintAnimData(source, item)
+	local bank = data and data.bank or "sign_mini"
+	local build = data and data.build or "sign_mini"
+	local anim = data and data.anim or "idle"
+	local anim_key = tostring(bank) .. "|" .. tostring(build) .. "|" .. tostring(anim)
+	if source and source.Transform then
+		pcall(function()
+			local sx, sy, sz = source.Transform:GetScale()
+			marker.Transform:SetScale(sx or 1, sy or sx or 1, sz or sx or 1)
+			marker.Transform:SetRotation(source.Transform:GetRotation())
+		end)
+	else
+		marker.Transform:SetScale(1, 1, 1)
+		marker.Transform:SetRotation(0)
+	end
+	if marker.deploy_hint_anim_key == anim_key then return end
+	local ok = pcall(function()
+		marker.AnimState:SetBank(bank)
+		marker.AnimState:SetBuild(build)
+		marker.AnimState:PlayAnimation(anim, true)
+	end)
+	if not ok then
+		bank, build, anim = "sign_mini", "sign_mini", "idle"
+		marker.AnimState:SetBank(bank)
+		marker.AnimState:SetBuild(build)
+		marker.AnimState:PlayAnimation(anim, true)
+		anim_key = bank .. "|" .. build .. "|" .. anim
+	end
+	marker.deploy_hint_anim_key = anim_key
+end
+
+function ActionQueuer:GetDeployHintMarker(index, spacing, item)
+	self.deploy_hint_markers = self.deploy_hint_markers or {}
+	local marker = self.deploy_hint_markers[index]
+	if not marker or not marker:IsValid() then
+		marker = CreateDeployHintMarker()
+		self.deploy_hint_markers[index] = marker
+	end
+	self:SetDeployHintMarkerAnim(marker, item)
+	marker.AnimState:SetAddColour(.25, .75, .25, 0)
+	marker.AnimState:SetMultColour(1, 1, 1, 0.65)
+	return marker
+end
+
+function ActionQueuer:ShowDeployHintMarker(index, pos, spacing, item)
+	local marker = self:GetDeployHintMarker(index, spacing, item)
+	marker.Transform:SetPosition(pos.x, 0, pos.z)
+	marker:Show()
+end
+
+local function FindDeployHintItem(self, item)
+	local prefab = item and item.prefab
+	local active_item = INV_util:GetActiveItem()
+	if active_item and (not prefab or active_item.prefab == prefab) then
+		return active_item
+	end
+	if item and item.IsValid and item:IsValid() then
+		return item
+	end
+	if not prefab or not self.inst or not self.inst.replica or not self.inst.replica.inventory then
+		return
+	end
+	local inventory = self.inst.replica.inventory
+	local body_item
+	if EQUIPSLOTS.BACK then
+		body_item = inventory:GetEquippedItem(EQUIPSLOTS.BACK)
+	else
+		body_item = inventory:GetEquippedItem(EQUIPSLOTS.BODY)
+	end
+	local backpack = body_item and body_item.replica.container
+	for _, inv in pairs(backpack and { inventory, backpack } or { inventory }) do
+		for _, inv_item in pairs(inv:GetItems()) do
+			if inv_item and inv_item.prefab == prefab then
+				return inv_item
+			end
+		end
+	end
+end
+
+local function GetDeployHintStackSize(item)
+	return item and item.replica and item.replica.stackable and item.replica.stackable:StackSize() or 1
+end
+
+local function CountDeployHintItems(self, item, active_only)
+	local prefab = item and item.prefab
+	local inventory = self.inst and self.inst.replica and self.inst.replica.inventory
+	if not prefab or not inventory then return end
+	local count = 0
+	local active_item = INV_util:GetActiveItem()
+	if active_item and active_item.prefab == prefab then
+		count = count + GetDeployHintStackSize(active_item)
+	end
+	if active_only then return count end
+	for _, inv_item in pairs(inventory:GetItems()) do
+		if inv_item and inv_item.prefab == prefab then
+			count = count + GetDeployHintStackSize(inv_item)
+		end
+	end
+	local body_item
+	if EQUIPSLOTS.BACK then
+		body_item = inventory:GetEquippedItem(EQUIPSLOTS.BACK)
+	else
+		body_item = inventory:GetEquippedItem(EQUIPSLOTS.BODY)
+	end
+	local backpack = body_item and body_item.replica.container
+	if backpack then
+		for _, inv_item in pairs(backpack:GetItems()) do
+			if inv_item and inv_item.prefab == prefab then
+				count = count + GetDeployHintStackSize(inv_item)
+			end
+		end
+	end
+	return count
+end
+
+local function GetDeployHintLimit(self, deploy_fn, item)
+	if deploy_fn == self.DeployActiveItem or deploy_fn == self.DropActiveItem then
+		return CountDeployHintItems(self, item)
+	elseif deploy_fn == self.WormwoodPlantAtPoint then
+		return CountDeployHintItems(self, item, true)
+	end
+end
+
+local function CountDeployedHintPositions(deployed_pos)
+	local count = 0
+	for _ in pairs(deployed_pos or {}) do
+		count = count + 1
+	end
+	return count
+end
+
+local function CanBuildHintAtPoint(self, pos)
+	local playercontroller = self.inst.components.playercontroller
+	local recipe = playercontroller and playercontroller.placer_recipe
+	local builder = self.inst.replica.builder
+	if not recipe or not builder then return false end
+	if not builder:IsBuildBuffered(recipe.name) and not builder:CanBuild(recipe.name) then return false end
+	local rotation = playercontroller.placer and playercontroller.placer:GetRotation() or 0
+	return builder:CanBuildAtPoint(pos, recipe, rotation)
+end
+
+local function CanDeployHintAtPoint(self, deploy_fn, pos, item)
+	if deploy_fn == null then
+		return CanBuildHintAtPoint(self, pos)
+	end
+	if item == nil and self.inst.components.playercontroller and self.inst.components.playercontroller.placer_recipe then
+		return CanBuildHintAtPoint(self, pos)
+	end
+	if deploy_fn == self.DeployActiveItem then
+		local deploy_item = FindDeployHintItem(self, item)
+		local inventoryitem = deploy_item and deploy_item.replica and deploy_item.replica.inventoryitem
+		return inventoryitem and inventoryitem.CanDeploy and inventoryitem:CanDeploy(pos, nil, self.inst)
+	end
+	if deploy_fn == self.DropActiveItem then
+		return FindDeployHintItem(self, item) ~= nil
+	end
+	if deploy_fn == self.TillAtPoint then
+		return FindDeployHintItem(self, item) ~= nil and TheWorld.Map:CanTillSoilAtPoint(pos.x, 0, pos.z)
+	end
+	if deploy_fn == self.WormwoodPlantAtPoint then
+		return FindDeployHintItem(self, item) ~= nil and TheWorld.Map:CanTillSoilAtPoint(pos.x, 0, pos.z)
+	end
+	if deploy_fn == self.TerraformAtPoint then
+		return FindDeployHintItem(self, item) ~= nil and TheWorld.Map:CanTerraformAtPoint(pos.x, 0, pos.z)
+	end
+	return true
+end
+
+local function redir_valid_pos(self, deploy_fn, spacing, item)
+	local snap_farm = false
+	if deploy_fn == self.TillAtPoint or deploy_fn == self.WormwoodPlantAtPoint then snap_farm = true end
+	local heading, dir = GetHeadingDir()
+	local diagonal = heading % 2 ~= 0
+	local X, Z = "x", "z"
+	if dir then X, Z = Z, X end
+	local spacing_x = self.TL[X] > self.TR[X] and -spacing or spacing
+	local spacing_z = self.TL[Z] > self.BL[Z] and -spacing or spacing
+	local adjusted_spacing_x = diagonal and spacing * 1.4 or spacing
+	local adjusted_spacing_z = diagonal and spacing * 0.7 or spacing
+	local width = math.floor(self.TL:Dist(self.TR) / adjusted_spacing_x)
+	local height = math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
+	if height >= 1 then
+		height = self.endless_deploy and 100 or height
+	end
+	local start_x, _, start_z = self.TL:Get()
+	local terraforming = false
+
+	if -- 201217 null: added support for Watering of farming tiles
+		deploy_fn == self.TerraformAtPoint or
+		item and item:HasTag("groundtile") then
+		start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
+		terraforming = true
+	elseif deploy_fn == self.DropActiveItem or item and (item:HasTag("wallbuilder") or item:HasTag("fencebuilder")) then
+		start_x, start_z = math.floor(start_x) + 0.5, math.floor(start_z) + 0.5
+
+		-- 210116 null: adjust farm grid start position + offsets (thanks to blizstorm for help)
+	elseif snap_farm then
+		-- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
+		local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
+		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
+			farm3x3_offset =
+				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
+		end
+		start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
+			math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
+	elseif self.deploy_on_grid then -- 210201 null: deploy_on_grid = last to avoid conflict with farm grids (blizstorm)
+		start_x, start_z = math.floor(start_x * 2 + 0.5) * 0.5, math.floor(start_z * 2 + 0.5) * 0.5
+	end
+	return {
+		height = height,
+		start_x = start_x,
+		start_z = start_z,
+		terraforming = terraforming,
+		width = width,
+		spacing_x = spacing_x,
+		spacing_z = spacing_z,
+		X = X,
+		Z = Z,
+		diagonal = diagonal,
+	}
+end
+function ActionQueuer:RefreshDeployHint(deploy_fn, spacing, item, deployed_pos, fixed_data, fixed_limit)
+	if not self:CanDeployHint() then
+		self:ClearDeployHint()
+		return
+	end
+	if deploy_fn and self.TL and spacing then
+		--self.TL, self.BL, self.TR, self.BR
+		local data = fixed_data or redir_valid_pos(self, deploy_fn, spacing, item)
+		local hint_limit = fixed_limit
+		if hint_limit == nil then
+			hint_limit = GetDeployHintLimit(self, deploy_fn, item)
+		end
+		if hint_limit ~= nil then
+			hint_limit = math.max(0, hint_limit - CountDeployedHintPositions(deployed_pos))
+			if hint_limit <= 0 then
+				self:HideUnusedDeployHintMarkers(0)
+				return
+			end
+		end
+		local height = data.height
+		local start_x = data.start_x
+		local start_z = data.start_z
+		local terraforming = data.terraforming
+		local width = data.width
+		local spacing_x = data.spacing_x
+		local spacing_z = data.spacing_z
+		local X, Z = data.X, data.Z
+		local diagonal = data.diagonal
+		local cur_pos = Point()
+		local count = { x = 0, y = 0, z = 0 }
+		local row_swap = 1
+
+		-- 210127 null: added support for snaking within snaking for faster deployment (thanks to blizstorm)
+		local step = 1
+		local countz2 = 0
+		local countStep = { { 0, 1 }, { 1, 0 }, { 0, -1 }, { 1, 0 } }
+		local hint_count = 0
+		if height < 1 then countStep = { { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 } } end -- 210130 null: bliz fix (210127)
+		while self.inst:IsValid() do
+			cur_pos.x = start_x + spacing_x * count.x
+			cur_pos.z = start_z + spacing_z * count.z
+			if diagonal then
+				if width < 1 then
+					if count[Z] > height then break end
+					count[X] = count[X] - 1
+					count[Z] = count[Z] + 1
+				else
+					local row = math.floor(count.y / 2)
+					if count[X] + row > width or count[X] + row < 0 then
+						count.y = count.y + 1
+						if count.y > height then break end
+						row_swap = -row_swap
+						count[X] = count[X] + row_swap - 1
+						count[Z] = count[Z] + row_swap
+						cur_pos.x = start_x + spacing_x * count.x
+						cur_pos.z = start_z + spacing_z * count.z
+					end
+					count.x = count.x + row_swap
+					count.z = count.z + row_swap
+				end
+			else
+				if double_snake then -- 210127 null: snake within snake deployment (thanks to blizstorm)
+					if count[X] > width or count[X] < 0 then
+						countz2 = countz2 +
+							2 -- assume first that next major row can be progressed since this is the case most of the time (blizstorm)
+
+						-- if countz2 > height then -- old bliz code (210115)
+						if countz2 + 1 > height then -- 210130 null: bliz fix (210127)
+							-- if countz2 - 1 > height then -- old bliz code (210115)
+							-- if countz2 - 1 <= height then -- old bliz code (210122)
+							if countz2 <= height then -- 210130 null: bliz fix (210127)
+								-- countz2 = countz2 - 1 -- old bliz code (210115)
+								countStep = { { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 } }
+							else
+								break
+							end
+						end
+
+						step = 1
+						row_swap = -row_swap
+						count[X] = count[X] + row_swap
+						count[Z] = countz2
+						cur_pos.x = start_x + spacing_x * count.x
+						cur_pos.z = start_z + spacing_z * count.z
+					end
+					count[X] = count[X] + countStep[step][1] * row_swap
+					count[Z] = count[Z] + countStep[step][2]
+					step = step % 4 + 1
+				else -- Regular snaking deployment
+					if count[X] > width or count[X] < 0 then
+						count[Z] = count[Z] + 1
+						if count[Z] > height then break end
+						row_swap = -row_swap
+						count[X] = count[X] + row_swap
+						cur_pos.x = start_x + spacing_x * count.x
+						cur_pos.z = start_z + spacing_z * count.z
+					end
+					count[X] = count[X] + row_swap
+				end
+			end
+
+			local accessible_pos = cur_pos
+			if terraforming then
+				accessible_pos = GetAccessibleTilePosition(cur_pos)
+			elseif deploy_fn == self.TillAtPoint then -- 210117 null: check if pos already Tilled
+				for _, ent in pairs(TheSim:FindEntities(cur_pos.x, 0, cur_pos.z, 0.005, { "soil" })) do
+					if not ent:HasTag("NOCLICK") then
+						accessible_pos = false
+						break
+					end -- Skip Tilling this position
+				end
+			end
+			if accessible_pos then
+				local pos_key = accessible_pos.x .. "p" .. accessible_pos.z
+				if (not deployed_pos or not deployed_pos[pos_key])
+					and CanDeployHintAtPoint(self, deploy_fn, accessible_pos, item) then
+					hint_count = hint_count + 1
+					self:ShowDeployHintMarker(hint_count, accessible_pos, spacing, item)
+					if hint_count >= MAX_DEPLOY_HINT_MARKERS or hint_limit and hint_count >= hint_limit then break end
+				end
+			end
+		end
+		self:HideUnusedDeployHintMarkers(hint_count)
+	else
+		self:ClearDeployHint()
+	end
+end
+
+local function get_deploy_fn(self)
+	local active_item = INV_util:GetActiveItem()
+	if active_item then
+		-- 210103 null: added basic support for Wormwood planting
+		if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then
+			local cx, cz = (self.TL.x + self.BR.x) / 2,
+				(self.TR.z + self.BL.z) /
+				2                                                        -- Get SelectionBox() center coords
+			if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then -- if center = soil tile
+				return self.WormwoodPlantAtPoint, farm_spacing, active_item
+			else
+				return self.DeployActiveItem, farm_spacing, active_item
+			end
+		end
+
+		if active_item.replica.inventoryitem and active_item.replica.inventoryitem:IsDeployable(self.inst) then -- 如果鼠标上是允许放置的则放置
+			return self.DeployActiveItem, ActionQueuer:GetDeploySpacing(active_item),
+				active_item
+		else -- 否则丢弃
+			return self.DropActiveItem, 1, active_item
+		end
+		return
+	end
+	local equip_item = INV_util:GetHandsEquip()
+	--local act = self:GetAction(nil, nil, rightclick)--"farmtiller"--HasActionComponent(name)
+	if self:HasActionComponent(equip_item, "farmtiller") then
+		return self.TillAtPoint, farm_spacing, equip_item
+	end
+end
 -- 框选器(是否右键)
 function ActionQueuer:SelectionBox(rightclick)
 	local previous_ents = {}                           -- 先前的实体表
@@ -2778,6 +3289,22 @@ function ActionQueuer:SelectionBox(rightclick)
 			end
 		end
 		previous_ents = current_ents
+		if ActionQueuer:CanDeployHint() then
+			---DeployToSelection
+			local deploy_fn, spacing, item
+			if rightclick then
+				deploy_fn, spacing, item = get_deploy_fn(self)
+			elseif self.inst.components.playercontroller.placer then
+				local playercontroller = self.inst.components.playercontroller
+				local recipe = playercontroller.placer_recipe
+				deploy_fn = null
+				spacing = recipe.min_spacing or 3.2
+				item = nil
+			end
+			self:RefreshDeployHint(deploy_fn, spacing, item)
+		else
+			self:RefreshDeployHint()
+		end
 	end
 	-- 框选线程
 	self.selection_thread = StartThread(function() -- 该线程按帧刷新
@@ -3076,33 +3603,10 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
 							return
 						end
 					end
-
-					-- 210103 null: added basic support for Wormwood planting
-					if ThePlayer:HasTag("plantkin") and active_item:HasTag("deployedfarmplant") then
-						if not self.TL then return end
-						local cx, cz = (self.TL.x + self.BR.x) / 2,
-							(self.TR.z + self.BL.z) /
-							2                                                       -- Get SelectionBox() center coords
-						if (cx and cz) and TheWorld.Map:IsFarmableSoilAtPoint(cx, 0, cz) then -- if center = soil tile
-							self:DeployToSelection(self.WormwoodPlantAtPoint, farm_spacing, active_item) -- Snap to farm grid
-						else
-							self:DeployToSelection(self.DeployActiveItem, farm_spacing, active_item) -- Plant normally
-						end
-						return
-					end
-
-					if active_item.replica.inventoryitem and active_item.replica.inventoryitem:IsDeployable(self.inst) then -- 如果鼠标上是允许放置的则放置
-						self:DeployToSelection(self.DeployActiveItem, ActionQueuer:GetDeploySpacing(active_item),
-							active_item)
-					else -- 否则丢弃
-						self:DeployToSelection(self.DropActiveItem, 1, active_item)
-					end
-					return
 				end
-				local equip_item = INV_util:GetHandsEquip()
-				--local act = self:GetAction(nil, nil, rightclick)--"farmtiller"--HasActionComponent(name)
-				if self:HasActionComponent(equip_item, "farmtiller") then
-					self:DeployToSelection(self.TillAtPoint, farm_spacing, equip_item)
+				local deploy_fn, spacing, item = get_deploy_fn(self)
+				if deploy_fn then
+					self:DeployToSelection(deploy_fn, spacing, item)
 				end
 			elseif self.inst.components.playercontroller.placer then
 				self:MovementPredict()
@@ -3135,7 +3639,12 @@ function ActionQueuer:OnUp(rightclick) -- 抬起
 				or action_spacing[self.selected_ents[self.posaction].id] or 2,
 				active or hand)
 		end
-		self.TL, self.TR, self.BL, self.BR = nil, nil, nil, nil
+		if not self.action_thread then
+			self.TL, self.TR, self.BL, self.BR = nil, nil, nil, nil
+			self:ClearDeployHint(true)
+		end
+	else
+		self:ClearDeployHint(true)
 	end
 end
 
@@ -3755,45 +4264,21 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
 	if not self.TL then return end
 	self:MovementPredict()
 	-- 210116 null: cases for snapping positions to farm grid (Tilling, Wormwood planting on soil tiles, etc)
-	local snap_farm = false
+	--[[local snap_farm = false
 	if deploy_fn == self.TillAtPoint or deploy_fn == self.WormwoodPlantAtPoint then snap_farm = true end
-	local heading, dir = GetHeadingDir()
-	local diagonal = heading % 2 ~= 0
-	local X, Z = "x", "z"
-	if dir then X, Z = Z, X end
-	local spacing_x = self.TL[X] > self.TR[X] and -spacing or spacing
-	local spacing_z = self.TL[Z] > self.BL[Z] and -spacing or spacing
-	local adjusted_spacing_x = diagonal and spacing * 1.4 or spacing
-	local adjusted_spacing_z = diagonal and spacing * 0.7 or spacing
-	local width = math.floor(self.TL:Dist(self.TR) / adjusted_spacing_x)
-	local height = math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
-	if height >= 1 then
-		height = self.endless_deploy and 100 or height
-	end
-	local start_x, _, start_z = self.TL:Get()
-	local terraforming = false
-
-	if -- 201217 null: added support for Watering of farming tiles
-		deploy_fn == self.TerraformAtPoint or
-		item and item:HasTag("groundtile") then
-		start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
-		terraforming = true
-	elseif deploy_fn == self.DropActiveItem or item and (item:HasTag("wallbuilder") or item:HasTag("fencebuilder")) then
-		start_x, start_z = math.floor(start_x) + 0.5, math.floor(start_z) + 0.5
-
-		-- 210116 null: adjust farm grid start position + offsets (thanks to blizstorm for help)
-	elseif snap_farm then
-		-- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
-		local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-		if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
-			farm3x3_offset =
-				farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
-		end
-		start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
-			math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
-	elseif self.deploy_on_grid then -- 210201 null: deploy_on_grid = last to avoid conflict with farm grids (blizstorm)
-		start_x, start_z = math.floor(start_x * 2 + 0.5) * 0.5, math.floor(start_z * 2 + 0.5) * 0.5
-	end
+]]
+	local data = redir_valid_pos(self, deploy_fn, spacing, item)
+	local deploy_hint_limit = GetDeployHintLimit(self, deploy_fn, item)
+	self:RefreshDeployHint(deploy_fn, spacing, item, nil, data, deploy_hint_limit)
+	local height = data.height
+	local start_x = data.start_x
+	local start_z = data.start_z
+	local terraforming = data.terraforming
+	local width = data.width
+	local spacing_x = data.spacing_x
+	local spacing_z = data.spacing_z
+	local X, Z = data.X, data.Z
+	local diagonal = data.diagonal
 
 	local cur_pos = Point()
 	local count = { x = 0, y = 0, z = 0 }
@@ -3804,7 +4289,7 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
 	local countz2 = 0
 	local countStep = { { 0, 1 }, { 1, 0 }, { 0, -1 }, { 1, 0 } }
 	if height < 1 then countStep = { { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 } } end -- 210130 null: bliz fix (210127)
-
+	local deployed_pos = {}
 	self.action_thread = StartThread(function()
 		self.inst:ClearBufferedAction()
 
@@ -3884,8 +4369,10 @@ function ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
 			end
 			--if preview_mode then
 			if accessible_pos then
+				deployed_pos[accessible_pos.x .. "p" .. accessible_pos.z] = true
 				if not deploy_fn(self, accessible_pos, item) then break end
 			end
+			self:RefreshDeployHint(deploy_fn, spacing, item, deployed_pos, data, deploy_hint_limit)
 		end
 		self:ClearActionThread(next(self.selected_ents))
 		self.inst:DoTaskInTime(0, function() if next(self.selected_ents) then self:ApplyToSelection() end end)
@@ -4166,6 +4653,7 @@ function ActionQueuer:ClearSelectionThread()
 
 		self:hideSelectionWidget()
 	end
+	self:ClearDeployHint()
 	--
 	if authormode then
 		self:killminisign()
@@ -4194,6 +4682,7 @@ function ActionQueuer:ClearActionThread(notclosemovement)
 		--[[SendRPCToServer(RPC.StopControl, CONTROL_PRIMARY)]]
 	end
 	--
+	self:ClearDeployHint(true)
 	if authormode then
 		self:killminisign()
 	end
@@ -4840,7 +5329,13 @@ if MOD_util:CanAddSetting() then
 				key = "aq_automaketool",
 				options = enabledisableoption,
 				default = default_aq_automaketool,
-			}
+			},
+			{
+				description = "显示部署预览",
+				key = "aq_showdeploy",
+				options = enabledisableoption,
+				default = default_aq_showdeploy,
+			},
 		}
 	})
 end

@@ -13,6 +13,7 @@ description = [[
 3.配合另一个点击切装备食用更佳。
 4.线程开启的时候自动关闭延迟补偿，结束后自动开启。
 5.薇诺娜可以用shift右键快速转化花朵
+6.可与预览部署的物品
 ]]
 forumthread = ""
 api_version = 10
@@ -28,7 +29,7 @@ shipwrecked_compatible = false
 icon_atlas = "icn.xml"
 icon = "icn.tex"
 
-version = "2.2.10"
+version = "2.2.11"
 server_filter_tags = {}
 local null_options = {
 	{ description = "", data = 0 }
@@ -130,4 +131,5 @@ configuration_options =
 	AddConfig("aq_equipcane", "部分动作自动切手杖", true),
 	AddConfig("aq_double_click_range", "双击选取范围", 20, range_options),
 	AddConfig("aq_automaketool", "自动制作工具", true),
+	AddConfig("aq_showdeploy", "显示部署预览", true),
 }
