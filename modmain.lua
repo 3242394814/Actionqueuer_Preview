@@ -753,6 +753,9 @@ AddComponentPostInit("playercontroller", function(self, inst)
     IsHUDEntity = Upvaluehelper.GetUpvalue(_ActionQueuer.OnDown,"IsHUDEntity") -- HUD
 
     ActionQueuerPreview.userid = _ActionQueuer.inst.userid -- 自己的id
+    _ActionQueuer.CanDeployHint = function() -- 强行关闭原模组的预览功能
+        return false
+    end
 
     if TheWorld and TheWorld.ismastersim then
         Blacklist.wortox_soul = true -- 主机环境预览灵魂等于释放灵魂
