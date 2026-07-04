@@ -147,7 +147,7 @@ AddAction("leftclick", "READ", function(target)
 end)
 
 AddAction("leftclick", "STORE", function(target)
-    if target.prefab ~= "meatrack" then
+    if target.prefab ~= "meatrack" and target.prefab ~= "meatrack_hermit" and target.prefab ~= "meatrack_hermit_multi" then
         return false
     end
 
@@ -172,7 +172,7 @@ AddAction("leftclick", "STORE", function(target)
 end)
 
 AddAction("leftclick", "RUMMAGE", function(target)
-    if target.prefab ~= "meatrack" then
+    if target.prefab ~= "meatrack" and target.prefab ~= "meatrack_hermit" and target.prefab ~= "meatrack_hermit_multi" then
         return false
     end
 
@@ -753,12 +753,9 @@ function ActionQueuer:OnUp(rightclick)
                 else -- if selection box
                     self:DeployToSelection(self.WaterAtPoint, 4, equip_item) -- 201217 null: Water multiple tiles
                 end
-            
-            -- 201217 null: added support for Tilling of farming tiles
             elseif equip_item and (equip_item.prefab == "farm_hoe" or equip_item.prefab == "golden_farm_hoe" or
-			    equip_item.prefab == "shovel_lunarplant") then
+			    equip_item.prefab == "shovel_lunarplant" or equip_item.prefab == "fumarole_farm_hoe") then
                 self:DeployToSelection(self.TillAtPoint, farm_spacing, equip_item)
-            
             end
         elseif self.inst.components.playercontroller.placer then
             local playercontroller = self.inst.components.playercontroller

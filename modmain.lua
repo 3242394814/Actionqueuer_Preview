@@ -234,15 +234,29 @@ end)
 AddComponentPostInit("highlight", function(self, inst)
     local HighlightHighlight = self.Highlight
     self.Highlight = function(self, ...)
-        if ActionQueuer.selection_thread or ActionQueuer:IsSelectedEntity(inst) then return end
-        HighlightHighlight(self, ...)
+        if ActionQueuer and (ActionQueuer.selection_thread or (ActionQueuer.IsSelectedEntity and ActionQueuer:IsSelectedEntity(inst))) then
+            return
+        end
+
+        if HighlightHighlight then
+            HighlightHighlight(self, ...)
+        end
     end
+
     local HighlightUnHighlight = self.UnHighlight
     self.UnHighlight = function(self)
-        if ActionQueuer:IsSelectedEntity(inst) then return end
-        HighlightUnHighlight(self)
+        if not self or not inst or not inst:IsValid() then return end
+
+        if ActionQueuer and ActionQueuer.IsSelectedEntity and ActionQueuer:IsSelectedEntity(inst) then
+            return
+        end
+
+        if HighlightUnHighlight then
+            HighlightUnHighlight(self)
+        end
     end
 end)
+
 --for minimizing the memory leak in geo
 --hides the geo grid during an action queue
 AddComponentPostInit("placer", function(self, inst)
