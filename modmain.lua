@@ -732,7 +732,7 @@ AddComponentPostInit("playercontroller", function(self, inst)
     ActionQueuerPreview.preview_curs = {} -- 当前:存实体
     ActionQueuerPreview.preview_eds = {} -- 已种：存true
     ActionQueuerPreview.preview_highlight = MOD_util:GetMOption("preview_highlight", 0.3)
-    ActionQueuerPreview.preview_max = MOD_util:GetMOption("preview_max", 80) -- 预览最大数量
+    ActionQueuerPreview.preview_max = MOD_util:GetMOption("preview_max", 400) -- 预览最大数量
     ActionQueuerPreview.preview_color = PLAYERCOLOURS[MOD_util:GetMOption("preview_color", "GREEN")] -- 颜色
     ActionQueuerPreview.preview_dont_color = MOD_util:GetMOption("preview_dont_color", false) -- 不要变色
 
@@ -798,49 +798,27 @@ AddComponentPostInit("playercontroller", function(self, inst)
     end
 
     -- 还得是覆盖法...
+    local redir_valid_pos = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"redir_valid_pos")
+    local GetDeployHintLimit = Upvaluehelper.GetUpvalue(_ActionQueuer.DeployToSelection,"GetDeployHintLimit")
     function _ActionQueuer:DeployToSelection(deploy_fn, spacing, item, preview_mode)
         if not self.TL then return end
         self:MovementPredict()
         -- 210116 null: cases for snapping positions to farm grid (Tilling, Wormwood planting on soil tiles, etc)
-        local snap_farm = false
+        --[[local snap_farm = false
         if deploy_fn == self.TillAtPoint or deploy_fn == self.WormwoodPlantAtPoint then snap_farm = true end
-        local heading, dir = GetHeadingDir()
-        local diagonal = heading % 2 ~= 0
-        local X, Z = "x", "z"
-        if dir then X, Z = Z, X end
-        local spacing_x = self.TL[X] > self.TR[X] and -spacing or spacing
-        local spacing_z = self.TL[Z] > self.BL[Z] and -spacing or spacing
-        local adjusted_spacing_x = diagonal and spacing * 1.4 or spacing
-        local adjusted_spacing_z = diagonal and spacing * 0.7 or spacing
-        local width = math.floor(self.TL:Dist(self.TR) / adjusted_spacing_x)
-        local height = math.floor(self.TL:Dist(self.BL) / (width < 1 and adjusted_spacing_x or adjusted_spacing_z))
-        if height >= 1 then
-            height = self.endless_deploy and 100 or height
-        end
-        local start_x, _, start_z = self.TL:Get()
-        local terraforming = false
-
-        if -- 201217 null: added support for Watering of farming tiles
-            deploy_fn == self.TerraformAtPoint or
-            item and item:HasTag("groundtile") then
-            start_x, _, start_z = TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)
-            terraforming = true
-        elseif deploy_fn == self.DropActiveItem or item and (item:HasTag("wallbuilder") or item:HasTag("fencebuilder")) then
-            start_x, start_z = math.floor(start_x) + 0.5, math.floor(start_z) + 0.5
-
-            -- 210116 null: adjust farm grid start position + offsets (thanks to blizstorm for help)
-        elseif snap_farm then
-            -- 210709 null: fix for 3x3 alignment on medium/huge servers (different tile offsets)
-            local tilecenter = _G.Point(_G.TheWorld.Map:GetTileCenterPoint(start_x, 0, start_z)) -- center of tile
-            if tilecenter.x % 4 == 0 then                                                  -- if center of tile is divisible by 4, then it's a medium/huge server
-                farm3x3_offset =
-                    farm_spacing                                                           -- adjust offset for medium/huge servers for 3x3 grid
-            end
-            start_x, start_z = math.floor(start_x / farm_spacing) * farm_spacing + farm3x3_offset,
-                math.floor(start_z / farm_spacing) * farm_spacing + farm3x3_offset
-        elseif self.deploy_on_grid then -- 210201 null: deploy_on_grid = last to avoid conflict with farm grids (blizstorm)
-            start_x, start_z = math.floor(start_x * 2 + 0.5) * 0.5, math.floor(start_z * 2 + 0.5) * 0.5
-        end
+    ]]
+        local data = redir_valid_pos(self, deploy_fn, spacing, item)
+        local deploy_hint_limit = GetDeployHintLimit(self, deploy_fn, item)
+        self:RefreshDeployHint(deploy_fn, spacing, item, nil, data, deploy_hint_limit)
+        local height = data.height
+        local start_x = data.start_x
+        local start_z = data.start_z
+        local terraforming = data.terraforming
+        local width = data.width
+        local spacing_x = data.spacing_x
+        local spacing_z = data.spacing_z
+        local X, Z = data.X, data.Z
+        local diagonal = data.diagonal
 
         local cur_pos = Point()
         local count = { x = 0, y = 0, z = 0 }
@@ -851,9 +829,10 @@ AddComponentPostInit("playercontroller", function(self, inst)
         local countz2 = 0
         local countStep = { { 0, 1 }, { 1, 0 }, { 0, -1 }, { 1, 0 } }
         if height < 1 then countStep = { { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 } } end -- 210130 null: bliz fix (210127)
-
+        local deployed_pos = {}
         self.action_thread = StartThread(function()
             self.inst:ClearBufferedAction()
+
             while self.inst:IsValid() do
                 cur_pos.x = start_x + spacing_x * count.x
                 cur_pos.z = start_z + spacing_z * count.z
@@ -956,19 +935,21 @@ AddComponentPostInit("playercontroller", function(self, inst)
                     end
                 end
 
+                --if preview_mode then
                 if accessible_pos then
-                    if deploy_fn(self, accessible_pos, item) then
-                        ActionQueuerPreview:RemovePreview(accessible_pos)
-                    else
+                    deployed_pos[accessible_pos.x .. "p" .. accessible_pos.z] = true
+                    if not deploy_fn(self, accessible_pos, item) then
                         break
+                    else
+                        ActionQueuerPreview:RemovePreview(accessible_pos)
                     end
                 end
+                self:RefreshDeployHint(deploy_fn, spacing, item, deployed_pos, data, deploy_hint_limit)
             end
             self:ClearActionThread(next(self.selected_ents))
             self.inst:DoTaskInTime(0, function() if next(self.selected_ents) then self:ApplyToSelection() end end)
         end, "actionqueue_action_thread")
     end
-
 end)
 
 --------------------模组设置界面-------------------
@@ -997,18 +978,9 @@ MOD_util:CreatePage(pagename, {
         {
             description = "预览数量", -- 名称
             key = "preview_max", -- 对应设置项
-            default = 80, -- 默认选项
+            default = 400, -- 默认选项
             options = {
-                {text = "20", data = 20},
-                {text = "25", data = 25},
-                {text = "30", data = 30},
-                {text = "35", data = 35},
-                {text = "40", data = 40},
-                {text = "50", data = 50},
-                {text = "60", data = 60},
-                {text = "70", data = 70},
                 {text = "80", data = 80},
-                {text = "90", data = 90},
                 {text = "100", data = 100},
                 {text = "120", data = 120},
                 {text = "160", data = 160},
@@ -1018,6 +990,11 @@ MOD_util:CreatePage(pagename, {
                 {text = "400", data = 400},
                 {text = "500", data = 500},
                 {text = "1000", data = 1000},
+                {text = "2000", data = 2000},
+                {text = "3000", data = 3000},
+                {text = "4000", data = 4000},
+                {text = "5000", data = 5000},
+                {text = "9999", data = 9999},
             },
             onapplyfn = function()
                 ActionQueuerPreview.preview_max = MOD_util:GetMOption("preview_max", true)
