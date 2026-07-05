@@ -2826,11 +2826,11 @@ local function GetDeployHintAnimCacheKey(source, item)
 end
 
 local function GetDeployHintAnimData(source, item)
-	if not source or not source.AnimState then return end
-	local cache_key = GetDeployHintAnimCacheKey(source, item)
+	local cache_key = item.prefab
 	if cache_key and DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] then
 		return DEPLOY_HINT_ANIM_DATA_CACHE[cache_key]
 	end
+	if not source or not source.AnimState then return end
 	local animstate = source.AnimState
 	local ok_build, build = pcall(function() return animstate:GetBuild() end)
 	if not ok_build or not build or build == "" or build == "FROMNUM" then
@@ -2859,35 +2859,25 @@ local function GetDeployHintAnimData(source, item)
 end
 
 function ActionQueuer:SetDeployHintMarkerAnim(marker, item)
-	local source = GetDeployHintAnimSource(self, item)
-	local data = GetDeployHintAnimData(source, item)
+	local cache_key = item.prefab
+	local data
+	if cache_key and DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] then
+		data = DEPLOY_HINT_ANIM_DATA_CACHE[cache_key]
+	else
+		local source = GetDeployHintAnimSource(self, item)
+		data = GetDeployHintAnimData(source, item)
+	end
+
 	local bank = data and data.bank or "sign_mini"
 	local build = data and data.build or "sign_mini"
 	local anim = data and data.anim or "idle"
 	local anim_key = tostring(bank) .. "|" .. tostring(build) .. "|" .. tostring(anim)
-	if source and source.Transform then
-		pcall(function()
-			local sx, sy, sz = source.Transform:GetScale()
-			marker.Transform:SetScale(sx or 1, sy or sx or 1, sz or sx or 1)
-			marker.Transform:SetRotation(source.Transform:GetRotation())
-		end)
-	else
-		marker.Transform:SetScale(1, 1, 1)
-		marker.Transform:SetRotation(0)
-	end
+	--marker.Transform:SetScale(1, 1, 1)
+	marker.Transform:SetRotation(0)
 	if marker.deploy_hint_anim_key == anim_key then return end
-	local ok = pcall(function()
-		marker.AnimState:SetBank(bank)
-		marker.AnimState:SetBuild(build)
-		marker.AnimState:PlayAnimation(anim, true)
-	end)
-	if not ok then
-		bank, build, anim = "sign_mini", "sign_mini", "idle"
-		marker.AnimState:SetBank(bank)
-		marker.AnimState:SetBuild(build)
-		marker.AnimState:PlayAnimation(anim, true)
-		anim_key = bank .. "|" .. build .. "|" .. anim
-	end
+	marker.AnimState:SetBank(bank)
+	marker.AnimState:SetBuild(build)
+	marker.AnimState:PlayAnimation(anim, true)
 	marker.deploy_hint_anim_key = anim_key
 end
 
@@ -2976,10 +2966,9 @@ local function CountDeployHintItems(self, item, active_only)
 end
 
 local function GetDeployHintLimit(self, deploy_fn, item)
-	if deploy_fn == self.DeployActiveItem or deploy_fn == self.DropActiveItem then
+	if deploy_fn == self.DeployActiveItem or deploy_fn == self.DropActiveItem
+		or deploy_fn == self.WormwoodPlantAtPoint then
 		return CountDeployHintItems(self, item)
-	elseif deploy_fn == self.WormwoodPlantAtPoint then
-		return CountDeployHintItems(self, item, true)
 	end
 end
 
@@ -3210,6 +3199,7 @@ function ActionQueuer:RefreshDeployHint(deploy_fn, spacing, item, deployed_pos, 
 end
 
 local function get_deploy_fn(self)
+	if not self.TL then return end
 	local active_item = INV_util:GetActiveItem()
 	if active_item then
 		-- 210103 null: added basic support for Wormwood planting
@@ -3765,7 +3755,7 @@ function ActionQueuer:TillAtPoint(pos, item)
 	local x, y, z = pos:Get()
 	if not INV_util:GetHandsEquip() then return false end
 	if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- 201221 null: Fix for when objects block Tilling
-		local act = BufferedAction(self.inst, nil, ACTIONS.TILL, item, pos)
+		local act = BufferedAction(self.inst, nil, ACTIONS.TILL, item and item:IsValid() and item, pos)
 		self:SendActionAndWait(act, false)        -- false = RPC.LeftClick, avoids Geometric Placement mod's RPC.RightClick snap overrides
 	end
 	return true
@@ -3774,10 +3764,11 @@ end
 -- 210103 null: added support for Wormwood planting inside farm soil grids
 -- 种植
 function ActionQueuer:WormwoodPlantAtPoint(pos, item)
+	local active_item = INV_util:GetActiveItem() or self:GetNewActiveItem(item.prefab)
+	if not active_item then return false end
 	local x, y, z = pos:Get()
-	if not INV_util:GetActiveItem() then return false end
 	if TheWorld.Map:CanTillSoilAtPoint(x, y, z) then -- Do not plant outside the farm soil tile in this scenario
-		local act = BufferedAction(self.inst, nil, ACTIONS.DEPLOY, item, pos)
+		local act = BufferedAction(self.inst, nil, ACTIONS.DEPLOY, active_item, pos)
 		self:SendActionAndWait(act, false)        -- 210127 null: false avoids Geometric Placement mod's RPC.RightClick snap overrides
 	end
 	return true
