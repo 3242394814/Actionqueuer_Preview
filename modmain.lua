@@ -274,7 +274,6 @@ local function returnfunction()
 	SendRPCToServer(RPC.ReturnActiveItem)
 end
 local fn_list = {}
-local itemcomponents = {}
 local posaction_postab = {} --储存位置坐标，对于无实体的动作
 local mem = {}
 local function DealWx78_spinact(act, actcode, skip)
@@ -562,17 +561,15 @@ allowed_actions = {
 					return true --至少读一次
 				end
 			end
-			local bookclone
-			if not itemcomponents[book.prefab] then
-				MOD_util:MasterDo(function()
-					local a = SpawnPrefab(book.prefab)
-					itemcomponents[book.prefab] = a.components
-					a:Remove()
-				end)
+			if CMP_util then
+				local total = CMP_util:CalculateCMPData(CMP_util:GetPrefabData(book.prefab), "finiteuses", "SetMaxUses",
+					1)
+				if type(total) == "number" then
+					return i > 100 / total
+				end
+			else
+				return true
 			end
-			bookclone = itemcomponents[book.prefab]
-			local total = bookclone and bookclone.finiteuses and bookclone.finiteuses.total
-			return type(total) == "number" and i > 100 / total
 		end,
 		sleeptime = 0.1,
 		controllertable = { needreturnactiveitem = true },
@@ -1084,19 +1081,6 @@ allowed_actions = {
 					act.target, nil, 10, ACTIONS.ATTACK.canforce, ACTIONS.ATTACK.mod_name)
 				return
 			end
-			--[[  local handitem = INV_util:GetHandsEquip()
-            if handitem and handitem.prefab == "voidcloth_boomerang" then
-                local percent = EQUIP_util:GetChargeTime(handitem)
-                if percent ~= 1 then
-                    local another = INV_util:FindInInventory("voidcloth_boomerang", nil, function(inst)
-                        return EQUIP_util:GetChargeTime(inst) == 1
-                    end)
-                    if another then
-                        SendRPCToServer(RPC.ControllerUseItemOnSelfFromInvTile, ACTIONS.EQUIP.code, another)
-                        return
-                    end
-                end
-            end ]]
 			SendRPCToServer(RPC.LeftClick, ACTIONS.ATTACK.code, act.target:GetPosition().x,
 				act.target:GetPosition().z,
 				act.target, nil, 10, ACTIONS.ATTACK.canforce, ACTIONS.ATTACK.mod_name)
