@@ -2810,7 +2810,7 @@ local function GetDeployHintAnimCacheKey(source, item)
 end
 
 local function GetDeployHintAnimData(source, item)
-	local cache_key = item.prefab
+	local cache_key = item and item.prefab or "no_prefab"
 	if cache_key and DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] then
 		return DEPLOY_HINT_ANIM_DATA_CACHE[cache_key]
 	end
@@ -2843,7 +2843,7 @@ local function GetDeployHintAnimData(source, item)
 end
 
 function ActionQueuer:SetDeployHintMarkerAnim(marker, item)
-	local cache_key = item.prefab
+	local cache_key = item and item.prefab or "no_prefab"
 	local data
 	if cache_key and DEPLOY_HINT_ANIM_DATA_CACHE[cache_key] then
 		data = DEPLOY_HINT_ANIM_DATA_CACHE[cache_key]

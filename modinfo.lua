@@ -29,7 +29,7 @@ shipwrecked_compatible = false
 icon_atlas = "icn.xml"
 icon = "icn.tex"
 
-version = "2.2.14"
+version = "2.2.15"
 server_filter_tags = {}
 local null_options = {
 	{ description = "", data = 0 }
