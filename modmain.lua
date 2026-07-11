@@ -3816,7 +3816,8 @@ function ActionQueuer:SelectEndlessEnt(old_mouse)
 	end
 	self.endless_repeat_target.all_prefab = self.endless_repeat_target.all_prefab or {}
 	for ent in pairs(self.selected_ents) do -- 遍历已选实体
-		if ENT_util:IsValid(ent) and not self.endless_repeat_target.all_prefab[ent.prefab] then
+		if ENT_util:IsValid(ent) and ent.prefab
+			and not self.endless_repeat_target.all_prefab[ent.prefab] then
 			local data = {}
 			self.endless_repeat_target.all_prefab[ent.prefab] = data
 			local a = ent
