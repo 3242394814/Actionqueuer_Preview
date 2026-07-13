@@ -97,9 +97,13 @@ Upvaluehelper = GLOBAL.BBGOAT_utils.Upvaluehelper
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+if not KnownModIndex:IsModEnabledAny("workshop-2873533916") then
+    print("[列队行为学 · 动作预览] 未检测到ActionQueue RB3模组开启，停止加载本模组")
+    return
+end
+
 local GetAQConfigData = function(name)
-    return KnownModIndex:IsModEnabledAny("workshop-3018652965") and GLOBAL.GetModConfigData(name, "workshop-3018652965") or
-            KnownModIndex:IsModEnabledAny("workshop-2873533916") and GLOBAL.GetModConfigData(name, "workshop-2873533916")
+    return GLOBAL.GetModConfigData(name, "workshop-2873533916")
 end
 
 AQ_Preview_able = GetModConfigData("preview_able")

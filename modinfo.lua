@@ -45,7 +45,7 @@ Compatible with original Geometric Placement & Snapping tills mods
 ]]
 )
 
-version = "0.1.3.4"
+version = "0.1.3.5"
 author = "冰冰羊"
 api_version = 10
 priority = -11
