@@ -114,6 +114,7 @@ local default_aq_equipcane = GetConfigOrDefault('aq_equipcane', true)
 local default_aq_double_click_range = GetConfigOrDefault('aq_double_click_range', 20)
 local default_aq_automaketool = GetConfigOrDefault('aq_automaketool', true)
 local default_aq_showdeploy = GetConfigOrDefault('aq_showdeploy', true)
+local default_aq_autoequipmedal = GetConfigOrDefault('aq_autoequipmedal', true) --auto equip medal
 local default_dropcheck_internal = 0.5
 Assets = Assets or {}
 table.insert(Assets, Asset("ATLAS", "images/selection_square.xml"))
@@ -311,7 +312,8 @@ allowed_actions = {
 			return true
 		end,
 		act_pre_fn = function(act, self)
-			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('chopMedal') then
+			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('chopMedal')
+				and ActionQueuer:CanEquipMedal() then
 				local now = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.MEDAL)
 				self.oldmedal = self.oldmedal or now
 				local medal, k, backpack = INV_util:FindInInventory(nil, 'chopMedal')
@@ -389,7 +391,8 @@ allowed_actions = {
 			return true
 		end,
 		act_pre_fn = function(act, self)
-			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('minerMedal') then
+			if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('minerMedal')
+				and ActionQueuer:CanEquipMedal() then
 				local now = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.MEDAL)
 				self.oldmedal = self.oldmedal or now
 				local medal, k, backpack = INV_util:FindInInventory(nil, 'minerMedal')
@@ -655,9 +658,15 @@ allowed_actions = {
 		breakfn = function(act)
 			local selecttable = ActionQueuer and ActionQueuer:GetSelectedEnt(act.target)
 			--rightclick will lead fast break for fast pickup
-			if selecttable and selecttable.rightclick then
+			if selecttable and selecttable.rightclick or true then
 				if act.time > 0.1 and (ActionQueuer.inst.AnimState:IsCurrentAnimation("pickup_pst"))
 					and ActionQueuer:HaveAnotherSelectedEnt(act.target) then
+					--delay 0.2 then reselect
+					act.target:DoTaskInTime(0.2, function()
+						if not act.target:HasTag("INLIMBO") then
+							ActionQueuer:SelectEntity(act.target, 'PICKUP')
+						end
+					end)
 					return true
 				end
 			end
@@ -866,7 +875,7 @@ allowed_actions = {
 				return
 			end
 			if act.time < 0.1 or not ActionQueuer.inst.AnimState:IsCurrentAnimation("give") then
-				ActionQueuer:SendControllerRPCSafely(ACTIONS.GIVE.code, act.item, act.target)
+				ActionQueuer:SendControllerRPCSafely2(ACTIONS.GIVE.code, act.item, act.target)
 			end
 		end,
 		notbreakfn = function(act)
@@ -2453,6 +2462,25 @@ function ActionQueuer:CanSeeTarget(ent)
 		or ThePlayer.components.playervision.nightvision or ThePlayer.prefab == 'wathom')
 end
 
+function ActionQueuer:SendControllerRPCSafely2(actioncode, item, target, modname)
+	if INV_util:GetActiveItem() == item then
+		SendRPCToServer(RPC.LeftClick, actioncode, target:GetPosition().x,
+			target:GetPosition().z,
+			target, nil, nil, true, modname)
+	elseif self:CanSeeTarget(target) then --must can see it
+		SendRPCToServer(RPC.ControllerUseItemOnSceneFromInvTile, actioncode, item, target, modname)
+	else
+		if INV_util:GetActiveItem() then
+			SendRPCToServer(RPC.LeftClick, actioncode, target:GetPosition().x,
+				target:GetPosition().z,
+				target, nil, nil, true, modname)
+		else
+			POS_util:GoToPoint(target:GetPosition().x,
+				target:GetPosition().z)
+		end
+	end
+end
+
 function ActionQueuer:SendControllerRPCSafely(actioncode, item, target, modname)
 	if self:CanSeeTarget(target) then --must can see it
 		SendRPCToServer(RPC.ControllerUseItemOnSceneFromInvTile, actioncode, item, target, modname)
@@ -2725,6 +2753,10 @@ function ActionQueuer:CanDeployHint()
 		return
 	end
 	return true
+end
+
+function ActionQueuer:CanEquipMedal()
+	return MOD_util:GetMOption("aq_autoequipmedal", default_aq_autoequipmedal)
 end
 
 local MAX_DEPLOY_HINT_MARKERS = 400
@@ -4514,7 +4546,8 @@ function ActionQueuer:RepeatRecipe(builder, recipe, skin)
 	self.action_thread = StartThread(function()
 		self.inst:ClearBufferedAction()
 		--act_pre_fn
-		if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('handy_certificate') then
+		if EQUIPSLOTS.MEDAL and not ThePlayer.replica.inventory:EquipHasTag('handy_certificate')
+			and ActionQueuer:CanEquipMedal() then
 			local now = ThePlayer.replica.inventory:GetEquippedItem(EQUIPSLOTS.MEDAL)
 			self.oldmedal = self.oldmedal or now
 			local medal, k, backpack = INV_util:FindInInventory(nil, 'handy_certificate')
@@ -5311,6 +5344,12 @@ if MOD_util:CanAddSetting() then
 				key = "aq_showdeploy",
 				options = enabledisableoption,
 				default = default_aq_showdeploy,
+			},
+			{
+				description = "自动装备勋章",
+				key = "aq_autoequipmedal",
+				options = enabledisableoption,
+				default = default_aq_autoequipmedal,
 			},
 		}
 	})

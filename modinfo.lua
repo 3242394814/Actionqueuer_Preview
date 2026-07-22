@@ -29,7 +29,7 @@ shipwrecked_compatible = false
 icon_atlas = "icn.xml"
 icon = "icn.tex"
 
-version = "2.2.16"
+version = "2.2.17"
 server_filter_tags = {}
 local null_options = {
 	{ description = "", data = 0 }
@@ -132,4 +132,5 @@ configuration_options =
 	AddConfig("aq_double_click_range", "双击选取范围", 20, range_options),
 	AddConfig("aq_automaketool", "自动制作工具", true),
 	AddConfig("aq_showdeploy", "显示部署预览", true),
+	AddConfig("aq_autoequipmedal", "自动装备勋章", true),
 }
