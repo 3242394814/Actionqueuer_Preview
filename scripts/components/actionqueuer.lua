@@ -107,7 +107,7 @@ end)
 --[[leftclick]]
 AddActionList("leftclick", "ADDFUEL", "ADDWETFUEL", "CHECKTRAP", "COMBINESTACK", "COOK", "DECORATEVASE", "DIG", "DRAW", "DRY",
 "FERTILIZE", "FILL", "GIVE", "HAUNT", "LOWER_SAIL_BOOST", "PLANT", "RAISE_SAIL", "REPAIR_LEAK", "SEW", "TAKEITEM", "UPGRADE", 
-"PLANTSOIL", "INTERACT_WITH", "ADDCOMPOSTABLE", "ERASE_PAPER", "PICK", "BOTTLE", "ADD_CARD_TO_DECK", "REMOVELUNARBUILDUP")
+"PLANTSOIL", "INTERACT_WITH", "ERASE_PAPER", "BOTTLE", "ADD_CARD_TO_DECK", "REMOVELUNARBUILDUP")
 
 AddAction("leftclick", "ACTIVATE", function(target)
     return target.prefab == "dirtpile" or (target.prefab == "winona_catapult")
@@ -196,6 +196,36 @@ AddAction("leftclick", "RUMMAGE", function(target)
 
     end
     return false
+end)
+
+AddAction("leftclick", "TEACH", function(target)
+    local active_item = ThePlayer.components.playeravatardata.inst.replica.inventory:GetActiveItem()
+    return active_item and active_item:HasTag("mapspotrevealer") and
+           target == ThePlayer
+end)
+
+AddAction("leftclick", "ADDCOMPOSTABLE", function(target)
+    if target.prefab == "compostingbin" then
+
+        target._aq_block_pick = true
+
+        if target._aq_block_pick_task then
+            target._aq_block_pick_task:Cancel()
+        end
+
+        target._aq_block_pick_task = target:DoTaskInTime(1.5, function()
+            target._aq_block_pick = false
+        end)
+    end
+    return true
+end)
+
+AddAction("leftclick", "PICK", function(target)
+    if target.prefab == "compostingbin" and target._aq_block_pick then
+        return false
+    end
+
+    return true
 end)
 
 --[[rightclick]]
@@ -970,6 +1000,11 @@ function ActionQueuer:AutoCollect(pos, collect_now)
     end
 end
 
+local PROGRESS_CHECK_TARGETS = {
+    compostingbin = ACTIONS.ADDCOMPOSTABLE,
+    mushroom_farm = ACTIONS.GIVE,
+}
+
 function ActionQueuer:ApplyToSelection()
     self.action_thread = StartThread(function()
         self.inst:ClearBufferedAction()
@@ -984,9 +1019,11 @@ function ActionQueuer:ApplyToSelection()
                 local tool_action = allowed_actions.tools[act.action]
                 local auto_collect = CheckAllowedActions("autocollect", act.action, target)
                 self:SendActionAndWait(act, rightclick, target)
+
                 if not CheckAllowedActions("single", act.action, target) then
                     local noworkdelay = CheckAllowedActions("noworkdelay", act.action, target)
                     local current_action = act.action
+                    local is_progress_target = PROGRESS_CHECK_TARGETS[target.prefab] == current_action
                     while IsValidEntity(target) do
                         local act = self:GetAction(target, rightclick, pos)
                         if not act then
@@ -1001,9 +1038,30 @@ function ActionQueuer:ApplyToSelection()
                             if not act then break end
                         end
                         if act.action ~= current_action then break end
-                        self:SendActionAndWait(act, rightclick, target)
+
+                        if is_progress_target then
+                            local pre_item = active_item and self:GetActiveItem()
+                            local pre_count = pre_item and pre_item.replica.stackable and pre_item.replica.stackable:StackSize()
+                            self:SendActionAndWait(act, rightclick, target)
+                            if pre_count then
+                                local progressed = false
+                                for i = 1, 10 do
+                                    local post_item = self:GetActiveItem()
+                                    local post_count = post_item and post_item.replica.stackable and post_item.replica.stackable:StackSize() or 0
+                                    if post_count < pre_count then
+                                        progressed = true
+                                        break
+                                    end
+                                    Sleep(self.action_delay)
+                                end
+                                if not progressed then break end
+                            end
+                        else
+                            self:SendActionAndWait(act, rightclick, target)
+                        end
                     end
                 end
+
                 self:DeselectEntity(target)
                 self:CheckEntityMorph(target.prefab, pos, rightclick)
                 if active_item and not self:GetActiveItem() then

@@ -3,7 +3,7 @@ local EN = locale ~= "zh" and locale ~= "zhr"
 name = "ActionQueue RB3"
 description = ""
 author = "Cutlass / null / eXiGe / simplex(Original Author)"
-version = "4.0"
+version = "4.3"
 api_version_dst = 10
 
 icon_atlas = "modicon.xml"
