@@ -96,7 +96,7 @@ if not rawget(GLOBAL, "BBGOAT_utils") then
 end
 
 Upvaluehelper = GLOBAL.BBGOAT_utils.Upvaluehelper -- 来自冰冰羊的模组运行库
-MOD_util = GLOBAL.MOD_util -- 来自萌萌的新-基础运行库
+MOD_util = rawget(GLOBAL, "MOD_util") -- 来自萌萌的新-基础运行库
 if not MOD_util then
     print("[黑化排队论 · 动作预览] 未检测萌萌的新-基础运行库模组被开启。停止加载本模组")
     return
