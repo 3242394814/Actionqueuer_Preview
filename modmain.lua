@@ -658,7 +658,7 @@ allowed_actions = {
 		breakfn = function(act)
 			local selecttable = ActionQueuer and ActionQueuer:GetSelectedEnt(act.target)
 			--rightclick will lead fast break for fast pickup
-			if selecttable and selecttable.rightclick or true then
+			if selecttable and selecttable.rightclick then
 				if act.time > 0.1 and (ActionQueuer.inst.AnimState:IsCurrentAnimation("pickup_pst"))
 					and ActionQueuer:HaveAnotherSelectedEnt(act.target) then
 					--delay 0.2 then reselect
